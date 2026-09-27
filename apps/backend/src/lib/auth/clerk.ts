@@ -1,4 +1,4 @@
-import { verifyToken } from '@clerk/backend';
+import { verifyToken, createClerkClient } from '@clerk/backend';
 import type { Request, Response, NextFunction } from 'express';
 
 import { prisma } from '../db/client.js';
@@ -7,19 +7,40 @@ import { getDefaultClinic } from '../db/clinic.js';
 export interface AuthenticatedRequest extends Request {
   auth?: Record<string, unknown>;
   clinicId?: string;
+  role?: 'admin' | 'secretary';
+}
+
+/**
+ * Resolves the role for the authenticated user/session strictly from verified claims.
+ * If user has role === 'admin' in direct claims or public_metadata, returns 'admin'.
+ * Default fallback is 'secretary' (for all existing users or users without explicit admin role).
+ */
+export function resolveRoleFromToken(
+  verifiedClaims?: Record<string, unknown>,
+): 'admin' | 'secretary' {
+  if (!verifiedClaims) {
+    return 'secretary';
+  }
+
+  // 1. Direct claim: role
+  if (verifiedClaims.role === 'admin') {
+    return 'admin';
+  }
+
+  // 2. Metadata claim: public_metadata.role or publicMetadata.role
+  const publicMetadata = (verifiedClaims.public_metadata ||
+    verifiedClaims.publicMetadata) as Record<string, unknown> | undefined;
+
+  if (publicMetadata && typeof publicMetadata === 'object' && publicMetadata.role === 'admin') {
+    return 'admin';
+  }
+
+  return 'secretary';
 }
 
 /**
  * Resolves the clinicId for the authenticated user/session strictly from verified token claims.
  * Returns null if no clinic mapping can be determined from the token.
- *
- * Priority:
- * 1. Token custom claim: clinicId / clinic_id
- * 2. Token public_metadata or metadata: clinicId
- * 3. Token organization ID (org_id / orgId) matching a registered Clinic
- *
- * In production: NEVER falls back silently to a default clinic. If the token
- * lacks a clinic claim, access is strictly rejected with 403 Forbidden.
  */
 export async function resolveClinicIdFromToken(
   verifiedClaims?: Record<string, unknown>,
@@ -54,14 +75,38 @@ export async function resolveClinicIdFromToken(
 }
 
 /**
+ * Returns an initialized Clerk Backend SDK client.
+ * In development without a live key, provides a mock-safe interface.
+ */
+export function getClerkClient() {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  if (!secretKey || secretKey === 'placeholder' || secretKey.startsWith('dev-')) {
+    return {
+      invitations: {
+        createInvitation: async (params: {
+          emailAddress: string;
+          publicMetadata?: Record<string, unknown>;
+          redirectUrl?: string;
+          ignoreExisting?: boolean;
+        }) => {
+          console.log('[clerk:dev] Creating mock invitation:', params);
+          return {
+            id: `inv_mock_${Date.now()}`,
+            emailAddress: params.emailAddress,
+            publicMetadata: params.publicMetadata || {},
+            status: 'pending',
+            createdAt: Date.now(),
+          };
+        },
+      },
+    };
+  }
+
+  return createClerkClient({ secretKey });
+}
+
+/**
  * Express middleware to enforce Clerk JWT authentication for dashboard routes.
- *
- * In production: Strictly verifies Bearer token with CLERK_SECRET_KEY, resolves
- * the tenant's clinicId from token claims, and attaches it to req.clinicId.
- * Rejects with 403 Forbidden if no clinicId is associated with the token.
- *
- * In development: If CLERK_SECRET_KEY is a placeholder/dev, allows local development
- * by binding req.clinicId to the local seeded clinic.
  */
 export async function requireAuth(
   req: AuthenticatedRequest,
@@ -71,9 +116,6 @@ export async function requireAuth(
   const secretKey = process.env.CLERK_SECRET_KEY;
   const authHeader = req.headers.authorization;
 
-  // Double-gated development fallback:
-  // Fail-safe protection: requires BOTH NODE_ENV === 'development' AND ALLOW_DEV_CLINIC_FALLBACK === 'true'.
-  // If either flag is absent or false, fallback is strictly disabled and rejected with 403 Forbidden.
   const isDevEnv = process.env.NODE_ENV === 'development';
   const isDevFallbackAllowed = process.env.ALLOW_DEV_CLINIC_FALLBACK === 'true';
 
@@ -82,6 +124,7 @@ export async function requireAuth(
       try {
         const defaultClinic = await getDefaultClinic();
         req.clinicId = defaultClinic.id;
+        req.role = 'secretary';
         return next();
       } catch {
         res.status(500).json({ error: 'Veritabanında kayıtlı klinik bulunamadı.' });
@@ -104,8 +147,8 @@ export async function requireAuth(
   try {
     const verified = await verifyToken(token, { secretKey });
     req.auth = verified as Record<string, unknown>;
+    req.role = resolveRoleFromToken(verified as Record<string, unknown>);
 
-    // Strict production tenant resolution: token MUST resolve to a clinicId
     const clinicId = await resolveClinicIdFromToken(verified as Record<string, unknown>);
 
     if (!clinicId) {
@@ -119,6 +162,67 @@ export async function requireAuth(
     next();
   } catch (error) {
     console.warn('[auth] Clerk token validation failed:', error);
+    res.status(401).json({ error: 'Geçersiz veya süresi dolmuş yetki oturumu.' });
+  }
+}
+
+/**
+ * Express middleware to enforce Admin role for administrative routes (/api/admin/*).
+ * Strictly requires role === 'admin'. Rejects secretary users with 403 Forbidden.
+ */
+export async function requireAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  const authHeader = req.headers.authorization;
+
+  const isDevEnv = process.env.NODE_ENV === 'development';
+  const isDevFallbackAllowed = process.env.ALLOW_DEV_CLINIC_FALLBACK === 'true';
+
+  if (!secretKey || secretKey === 'placeholder' || secretKey.startsWith('dev-')) {
+    if (isDevEnv && isDevFallbackAllowed) {
+      // Support test-driven role simulation via x-mock-role header in dev mode
+      const mockRole = req.headers['x-mock-role'];
+      if (mockRole === 'secretary') {
+        res.status(403).json({
+          error: 'Erişim reddedildi: Bu işlem için Yönetici (Admin) yetkisi gereklidir.',
+        });
+        return;
+      }
+      req.role = 'admin';
+      return next();
+    }
+    res.status(403).json({
+      error: 'Erişim reddedildi: CLERK_SECRET_KEY yapılandırılmamış veya ALLOW_DEV_CLINIC_FALLBACK bayrağı aktif değil.',
+    });
+    return;
+  }
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Yetkilendirme gerekli: Token bulunamadı.' });
+    return;
+  }
+
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+  try {
+    const verified = await verifyToken(token, { secretKey });
+    req.auth = verified as Record<string, unknown>;
+    const role = resolveRoleFromToken(verified as Record<string, unknown>);
+    req.role = role;
+
+    if (role !== 'admin') {
+      res.status(403).json({
+        error: 'Erişim reddedildi: Bu işlem için Yönetici (Admin) yetkisi gereklidir.',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    console.warn('[auth] Clerk token validation failed for admin route:', error);
     res.status(401).json({ error: 'Geçersiz veya süresi dolmuş yetki oturumu.' });
   }
 }

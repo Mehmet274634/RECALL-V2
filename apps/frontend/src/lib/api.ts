@@ -3,22 +3,28 @@
  * Talks to apps/backend REST endpoints.
  */
 
+import { getUserRole } from './auth';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 async function getAuthHeader(): Promise<Record<string, string>> {
-  // If Clerk is available on window, attach session token
+  const headers: Record<string, string> = {};
+
   try {
+    const role = getUserRole();
+    headers['x-mock-role'] = role;
+
     const clerk = (window as unknown as { Clerk?: { session?: { getToken: () => Promise<string | null> } } }).Clerk;
     if (clerk?.session) {
       const token = await clerk.session.getToken();
       if (token) {
-        return { Authorization: `Bearer ${token}` };
+        headers['Authorization'] = `Bearer ${token}`;
       }
     }
   } catch {
     // Ignore in dev
   }
-  return {};
+  return headers;
 }
 
 export class ApiError extends Error {
@@ -182,4 +188,73 @@ export const api = {
   },
 
   getDoctors: () => request<{ doctors: Doctor[] }>('/api/doctors'),
+
+  // --- Admin API ---
+  getAdminClinics: () => request<{ clinics: AdminClinicItem[] }>('/api/admin/clinics'),
+
+  createAdminClinic: (data: AdminCreateClinicInput) =>
+    request<{ clinic: AdminClinicItem }>('/api/admin/clinics', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  addDoctorToClinic: (clinicId: string, data: AdminDoctorInput) =>
+    request<{ doctor: Doctor }>(`/api/admin/clinics/${clinicId}/doctors`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  inviteSecretary: (clinicId: string, email: string) =>
+    request<{
+      success: boolean;
+      message: string;
+      invitation: { id: string; emailAddress: string; status: string };
+    }>(`/api/admin/clinics/${clinicId}/invite-secretary`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
 };
+
+export interface AdminDoctorInput {
+  name: string;
+  specialty: string;
+  startHour?: string;
+  endHour?: string;
+  days?: string[];
+  complaints?: string;
+}
+
+export interface AdminCreateClinicInput {
+  name: string;
+  phoneNumber?: string;
+  greetingMessage?: string;
+  cancellationPolicyHours?: number;
+  specialInstructions?: string;
+  voiceId?: string;
+  doctors?: AdminDoctorInput[];
+}
+
+export interface AdminClinicItem {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  timezone: string;
+  greetingMessage?: string | null;
+  specialInstructions?: string | null;
+  cancellationPolicyHours: number;
+  voiceId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    doctors: number;
+    patients: number;
+    appointments: number;
+    callLogs: number;
+  };
+  doctors: Array<{
+    id: string;
+    name: string;
+    specialty: string | null;
+    workingHours: unknown;
+  }>;
+}

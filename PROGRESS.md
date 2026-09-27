@@ -1,7 +1,30 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 2 — Çoklu Klinik Onboarding Akışı ve Dashboard Klinik Ayarları Tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Faz 4 — Admin Paneli ve Otomatik Sekreter Davet Akışı Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 4: Admin Paneli, Rol Tabanlı Erişim (RBAC) & Otomatik Sekreter Daveti
+
+**Ne yapıldı:**
+1. **Rol Tabanlı Erişim ve Yetkilendirme (RBAC):**
+   - Clerk `public_metadata` üzerinde `role: "admin"` vs. `role: "secretary"` desteği kuruldu.
+   - `apps/backend/src/lib/auth/clerk.ts` içerisine `requireAdmin` middleware'i yazıldı. Yetkisiz sekreter istekleri `403 Forbidden` ile reddedilir.
+2. **Backend Admin API (`/api/admin/*`):**
+   - `GET /api/admin/clinics`: Platformdaki tüm klinikleri, hekim kadrosunu ve sayaçları listeler.
+   - `POST /api/admin/clinics`: Yeni klinik oluşturur (placeholder telefon üretimi ve hekim kadrosuyla).
+   - `POST /api/admin/clinics/:clinicId/doctors`: Kliniğe ek hekim tanımlar.
+   - `POST /api/admin/clinics/:clinicId/invite-secretary`: Clerk Backend SDK (`createInvitation`) ile otomatik davet gönderir, davete `{ "clinicId": "...", "role": "secretary" }` metadata'sını iliştirir. Manuel JSON yapıştırma ihtiyacı ortadan kaldırıldı.
+3. **Frontend Admin Paneli (`/admin`):**
+   - `AdminLayout.tsx`: Sadece admin rolünün erişebildiği koyu temalı platform yönetim kabuğu. Sekreter rolü erişmeye çalıştığında 403 uyarısı gösterilir.
+   - `AdminClinicsPage.tsx`: Tüm klinikleri, hekim sayılarını ve aktivite istatistiklerini listeler; tek tıkla sekreter davet modalı içerir.
+   - `AdminNewClinicPage.tsx`: En az 1 hekim zorunluluğu olan yeni klinik kayıt formu ve kayıt sonrası sekreter davet akışı.
+4. **4. Test Kliniği ("Ege Çocuk Sağlığı ve Hastalıkları Kliniği"):**
+   - Admin API ve Web UI üzerinden başarıyla oluşturuldu, hekim eklendi ve sekreter daveti iletildi.
+5. **Dokümantasyon:**
+   - `ONBOARDING.md` admin paneli akışıyla güncellendi.
+   - `ADR-018` `DECISIONS.md` dosyasına eklendi.
 
 ---
 

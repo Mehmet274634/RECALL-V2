@@ -519,6 +519,42 @@ Ayrıca, sisteme dahil olan bir klinik sekreteri kendi kliniğinin santral numar
 
 ---
 
+## ADR-018: Rol Tabanlı Erişim (RBAC) ve Web Tabanlı Admin Onboarding Paneli
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+ADR-017'de CLI script'i ile klinik açma süreci standartlaştırılmıştı; ancak sekreter kullanıcısının Clerk Dashboard üzerinden elle açılması ve `public_metadata.clinicId` alanının kopyala-yapıştır ile atanması gerekiyordu. Bu operasyonel bağımlılık platformun büyümesinde insan hatasına açıktı ve teknik olmayan yöneticilerin yeni klinik açmasını zorlaştırıyordu.
+
+**Karar:**
+1. **Rol Tabanlı Yetkilendirme (RBAC):**
+   - Kullanıcıların `public_metadata` alanına `role: "admin"` veya `role: "secretary"` desteği eklendi.
+   - Rolü olmayan veya doğrudan `clinicId` taşıyan mevcut kullanıcılar geriye dönük uyumlulukla `secretary` kabul edilir.
+   - İlk admin kullanıcısı Clerk Dashboard üzerinden `{ "role": "admin" }` public metadata'sı atanarak tek seferlik bootstrap edilir.
+   - `apps/backend/src/lib/auth/clerk.ts` içerisine `requireAdmin` middleware'i eklendi. Admin endpoint'lerine (`/api/admin/*`) yetkisiz erişim girişimleri `403 Forbidden` ile reddedilir.
+2. **Backend Admin API (`/api/admin/*`):**
+   - `GET /api/admin/clinics`: Platformdaki tüm klinikleri, hekim kadrolarını ve aktivite sayılarını listeler.
+   - `POST /api/admin/clinics`: Yeni klinik oluşturur (placeholder telefon ve hekim kadrosu desteğiyle).
+   - `POST /api/admin/clinics/:clinicId/doctors`: Kliniğe yeni hekim ekler.
+   - `POST /api/admin/clinics/:clinicId/invite-secretary`: Clerk Backend SDK Invitations API (`createInvitation`) kullanılarak otomatik sekreter daveti gönderir. Davet nesnesine `{ "clinicId": "...", "role": "secretary" }` otomatik enjekte edilir; sekreter daveti kabul edip şifre belirlediğinde hesabı doğru kliniğe otomatik bağlanır.
+3. **Frontend Admin Paneli (`/admin`):**
+   - `AdminLayout.tsx`: Sadece admin rolüne sahip kullanıcıların görebileceği, bağımsız bir SaaS yönetim kabuğu oluşturuldu. Sekreter rolü erişmeye çalıştığında zarif bir 403 uyarısı gösterilir.
+   - `AdminClinicsPage.tsx`: Tüm klinikleri, hekim sayılarını ve aktivite istatistiklerini tablo halinde listeler; hızlı "Sekreter Davet Et" modalı içerir.
+   - `AdminNewClinicPage.tsx`: En az 1 hekim zorunluluğu olan yeni klinik kayıt formu ve kayıt sonrası sekreter davet akışını yönetir.
+4. **Geriye Dönük Uyumluluk:**
+   - Mevcut `onboard-clinic.ts` CLI script'i acil durum veya toplu betik kullanımı için yedek olarak muhafaza edildi.
+
+**Alternatifler:**
+- *Yalnızca CLI script ile devam etmek:* Operasyonel ölçeklenme sınırlı kalır, her müşteride Clerk paneline elle müdahale gerekirdi.
+
+**Sonuçlar:**
+- (+) Klinik onboarding süreci tamamen web arayüzüne taşındı.
+- (+) Elle JSON kopyala-yapıştır adımı tarihe karıştı; Clerk e-posta davetiyle otomatik metadata ilişkilendirmesi sağlandı.
+- (+) Test edilmiş 4. klinik ("Ege Çocuk Sağlığı ve Hastalıkları Kliniği") ile admin akışı canlı olarak doğrulandı.
+
+---
+
 <!--
 YENİ ADR EKLEME ŞABLONU:
 

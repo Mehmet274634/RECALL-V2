@@ -9,6 +9,7 @@ import { callLogsRouter } from './routes/call-logs.js';
 import { doctorsRouter } from './routes/doctors.js';
 import { statsRouter } from './routes/stats.js';
 import { clinicRouter } from './routes/clinic.js';
+import { adminRouter } from './routes/admin.js';
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use('/api/call-logs', callLogsRouter);
 app.use('/api/doctors', doctorsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/clinic', clinicRouter);
+app.use('/api/admin', adminRouter);
 
 // --- Start Server ---
 const PORT = process.env.PORT || 3001;

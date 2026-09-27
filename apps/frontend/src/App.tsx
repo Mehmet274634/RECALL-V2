@@ -7,6 +7,9 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import CallsPage from './pages/dashboard/CallsPage';
 import DoctorsPage from './pages/dashboard/DoctorsPage';
 import ClinicSettingsPage from './pages/dashboard/ClinicSettingsPage';
+import AdminLayout from './components/layout/AdminLayout';
+import AdminClinicsPage from './pages/admin/AdminClinicsPage';
+import AdminNewClinicPage from './pages/admin/AdminNewClinicPage';
 
 function App() {
   return (
@@ -22,6 +25,13 @@ function App() {
         <Route path="settings" element={<ClinicSettingsPage />} />
         {/* Redirect unknown dashboard sub-routes */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+
+      {/* Admin Management Shell */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<AdminClinicsPage />} />
+        <Route path="new" element={<AdminNewClinicPage />} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
