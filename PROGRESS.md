@@ -1,7 +1,29 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 1 — Uçtan Uca Randevu Akışı ve Sekreter Dashboard'u tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Faz 1 Code Review & Hardening tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 1 Code Review: Güvenlik, Concurrency ve Multi-tenant Sertleştirme
+
+**Ne yapıldı:**
+1. **Randevu Çakışması — Concurrency / Race Condition Koruması:**
+   - PostgreSQL `READ COMMITTED` izolasyon seviyesinde eşzamanlı boş slot kontrolünün yaratabileceği phantom read/race condition riski giderildi.
+   - Randevu oluşturma (`bookAppointment`, `POST /api/appointments`), güncelleme (`PATCH /api/appointments/:id`) ve erteleme (`rescheduleAppointment`) transaction'larına `SELECT id FROM doctors WHERE id = ${doctorId} FOR UPDATE` satır kilitleme eklendi.
+   - 5 eşzamanlı istek ile Neon DB üzerinde yapılan testte 1 kabul, 4 `SLOT_OCCUPIED` reddi ile çifte randevu imkansız kılındı.
+2. **Multi-tenant İzolasyonu (Clerk Middleware & REST Routes):**
+   - `AuthenticatedRequest` genişletildi; `requireAuth` middleware'i doğrulanmış JWT iddialarından (`clinicId`, `public_metadata.clinicId`, `org_id` veya MVP fallback) `req.clinicId` alanını garantiye alacak şekilde güncellendi.
+   - `/api/appointments`, `/api/call-logs`, `/api/doctors`, `/api/stats` endpoint'leri sadece `req.clinicId` kullanacak şekilde kilitlendi; client parametreleri üzerinden klinik değiştirme (IDOR) riski önlendi.
+3. **Telefon Numarası Normalizasyonu (`libphonenumber-js`):**
+   - `libphonenumber-js` paketi kuruldu ve `src/lib/phone.ts` helper'ı oluşturuldu.
+   - Tüm telefon girdileri uluslararası E.164 (`+90...`) formatına normalize edildi. Farklı formatlarda arama (`0 (532) ...`, `555...`) ile DB eşleşmesi doğrulandı.
+4. **Vapi Webhook Güvenliği (Timing-Safe Secret Guard):**
+   - `validateVapiSecret` middleware'i `crypto.timingSafeEqual` ile zamanlama saldırılarına karşı güvenli hale getirildi.
+   - Router seviyesinde `/api/vapi/server` korunduğu için hem `tool-calls` hem de `end-of-call-report` dahil hiçbir Vapi mesajı secret olmadan geçemez.
+5. **Belgeleme & Test:**
+   - `ADR-011` eklendi.
+   - `apps/backend/scripts/test-phase1-review.ts` ile tüm 4 senaryo otomatik test edildi ve başarıyla geçti.
 
 ---
 

@@ -1,8 +1,9 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { normalizePhone } from './booking.js';
+import { normalizePhone } from '../phone.js';
 
 export interface LookupAppointmentParams {
+  clinicId?: string;
   patientPhone?: string;
   patientName?: string;
 }
@@ -25,7 +26,7 @@ export interface LookupResult {
  * Look up existing appointments for a patient.
  */
 export async function lookupAppointment(params: LookupAppointmentParams): Promise<LookupResult> {
-  const clinic = await getDefaultClinic();
+  const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
   if (!params.patientPhone && !params.patientName) {
     return {
@@ -41,7 +42,7 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
     const normPhone = normalizePhone(params.patientPhone);
     patient = await prisma.patient.findFirst({
       where: {
-        clinicId: clinic.id,
+        clinicId,
         phoneNumber: normPhone,
       },
     });
@@ -50,7 +51,7 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
   if (!patient && params.patientName) {
     patient = await prisma.patient.findFirst({
       where: {
-        clinicId: clinic.id,
+        clinicId,
         fullName: { contains: params.patientName, mode: 'insensitive' },
       },
     });
@@ -67,7 +68,7 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
   // Query appointments
   const appts = await prisma.appointment.findMany({
     where: {
-      clinicId: clinic.id,
+      clinicId,
       patientId: patient.id,
       status: 'SCHEDULED',
       startsAt: { gte: new Date(Date.now() - 60 * 60 * 1000) }, // current or future

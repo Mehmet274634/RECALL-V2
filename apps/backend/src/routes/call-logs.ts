@@ -1,8 +1,7 @@
 import { Router } from 'express';
 
 import { prisma } from '../lib/db/client.js';
-import { getDefaultClinic } from '../lib/db/clinic.js';
-import { requireAuth } from '../lib/auth/clerk.js';
+import { requireAuth, type AuthenticatedRequest } from '../lib/auth/clerk.js';
 
 export const callLogsRouter = Router();
 
@@ -12,14 +11,15 @@ callLogsRouter.use(requireAuth);
 /**
  * GET /api/call-logs
  * Query params: limit, date (YYYY-MM-DD)
+ * Scoped strictly to verified req.clinicId
  */
-callLogsRouter.get('/', async (req, res) => {
+callLogsRouter.get('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
     const { limit = '50', date } = req.query;
 
     const whereClause: Record<string, unknown> = {
-      clinicId: clinic.id,
+      clinicId,
     };
 
     if (date && typeof date === 'string') {
@@ -60,14 +60,15 @@ callLogsRouter.get('/', async (req, res) => {
 
 /**
  * GET /api/call-logs/:id
+ * Scoped strictly to verified req.clinicId
  */
-callLogsRouter.get('/:id', async (req, res) => {
+callLogsRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
     const { id } = req.params;
 
     const callLog = await prisma.callLog.findFirst({
-      where: { id, clinicId: clinic.id },
+      where: { id, clinicId },
       include: {
         appointments: {
           include: {

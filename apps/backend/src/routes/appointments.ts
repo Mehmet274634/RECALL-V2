@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { AppointmentStatus } from '@prisma/client';
 
 import { prisma } from '../lib/db/client.js';
-import { getDefaultClinic } from '../lib/db/clinic.js';
-import { requireAuth } from '../lib/auth/clerk.js';
-import { normalizePhone } from '../lib/scheduling/booking.js';
+import { requireAuth, type AuthenticatedRequest } from '../lib/auth/clerk.js';
+import { normalizePhone } from '../lib/phone.js';
 
 export const appointmentsRouter = Router();
 
@@ -15,14 +14,15 @@ appointmentsRouter.use(requireAuth);
 /**
  * GET /api/appointments
  * Query params: doctorId, date (YYYY-MM-DD), status
+ * Multi-tenant safe: uses req.clinicId extracted from verified session.
  */
-appointmentsRouter.get('/', async (req, res) => {
+appointmentsRouter.get('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
     const { doctorId, date, status } = req.query;
 
     const whereClause: Record<string, unknown> = {
-      clinicId: clinic.id,
+      clinicId,
     };
 
     if (doctorId && typeof doctorId === 'string') {
@@ -67,14 +67,15 @@ appointmentsRouter.get('/', async (req, res) => {
 
 /**
  * GET /api/appointments/:id
+ * Multi-tenant safe: scopes to req.clinicId
  */
-appointmentsRouter.get('/:id', async (req, res) => {
+appointmentsRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
     const { id } = req.params;
 
     const appointment = await prisma.appointment.findFirst({
-      where: { id, clinicId: clinic.id },
+      where: { id, clinicId },
       include: {
         doctor: true,
         patient: true,
@@ -104,9 +105,10 @@ const createAppointmentSchema = z.object({
 
 /**
  * POST /api/appointments
- * Manual appointment creation by secretary
+ * Manual appointment creation by secretary.
+ * Protected with row-level lock on doctor and multi-tenant isolation.
  */
-appointmentsRouter.post('/', async (req, res) => {
+appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
   const parsed = createAppointmentSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Geçersiz parametreler', details: parsed.error.format() });
@@ -116,33 +118,36 @@ appointmentsRouter.post('/', async (req, res) => {
   const { patientName, patientPhone, doctorId, startsAt: startsAtStr, durationMinutes } = parsed.data;
 
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
     const startsAt = new Date(startsAtStr);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
     const normalizedPhone = normalizePhone(patientPhone);
 
-    // Upsert patient
+    // Upsert patient scoped to tenant's clinicId
     const patient = await prisma.patient.upsert({
       where: {
         clinicId_phoneNumber: {
-          clinicId: clinic.id,
+          clinicId,
           phoneNumber: normalizedPhone,
         },
       },
       update: { fullName: patientName.trim() },
       create: {
-        clinicId: clinic.id,
+        clinicId,
         fullName: patientName.trim(),
         phoneNumber: normalizedPhone,
       },
     });
 
-    // Conflict check in transaction
+    // Conflict check in transaction with row-level lock on Doctor
     const newAppointment = await prisma.$transaction(async (tx) => {
+      // Row-level lock on doctor record to serialize slot checking
+      await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${doctorId} FOR UPDATE`;
+
       const conflict = await tx.appointment.findFirst({
         where: {
-          clinicId: clinic.id,
+          clinicId,
           doctorId,
           status: 'SCHEDULED',
           AND: [
@@ -158,7 +163,7 @@ appointmentsRouter.post('/', async (req, res) => {
 
       return tx.appointment.create({
         data: {
-          clinicId: clinic.id,
+          clinicId,
           doctorId,
           patientId: patient.id,
           startsAt,
@@ -193,8 +198,9 @@ const updateAppointmentSchema = z.object({
 /**
  * PATCH /api/appointments/:id
  * Manual edit (status change, reschedule)
+ * Uses transaction with doctor row-level locking to prevent race conditions.
  */
-appointmentsRouter.patch('/:id', async (req, res) => {
+appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const parsed = updateAppointmentSchema.safeParse(req.body);
 
@@ -204,9 +210,9 @@ appointmentsRouter.patch('/:id', async (req, res) => {
   }
 
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
     const existing = await prisma.appointment.findFirst({
-      where: { id, clinicId: clinic.id },
+      where: { id, clinicId },
     });
 
     if (!existing) {
@@ -224,18 +230,29 @@ appointmentsRouter.patch('/:id', async (req, res) => {
     if (doctorId) {
       dataToUpdate.doctorId = doctorId;
     }
+
+    const targetDoctorId = doctorId || existing.doctorId;
+    const targetStatus = status || existing.status;
+
+    let newStartsAt: Date | undefined;
+    let newEndsAt: Date | undefined;
+
     if (startsAt) {
-      const newStartsAt = new Date(startsAt);
-      const newEndsAt = endsAt ? new Date(endsAt) : new Date(newStartsAt.getTime() + 30 * 60 * 1000);
+      newStartsAt = new Date(startsAt);
+      newEndsAt = endsAt ? new Date(endsAt) : new Date(newStartsAt.getTime() + 30 * 60 * 1000);
+      dataToUpdate.startsAt = newStartsAt;
+      dataToUpdate.endsAt = newEndsAt;
+    }
 
-      // Check conflict if keeping SCHEDULED
-      const targetDoctorId = doctorId || existing.doctorId;
-      const targetStatus = status || existing.status;
+    // Run in transaction with row-level lock on doctor if updating schedule
+    const updated = await prisma.$transaction(async (tx) => {
+      if (newStartsAt && newEndsAt && targetStatus === 'SCHEDULED') {
+        // Lock doctor record to prevent concurrent double-booking
+        await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${targetDoctorId} FOR UPDATE`;
 
-      if (targetStatus === 'SCHEDULED') {
-        const conflict = await prisma.appointment.findFirst({
+        const conflict = await tx.appointment.findFirst({
           where: {
-            clinicId: clinic.id,
+            clinicId,
             doctorId: targetDoctorId,
             status: 'SCHEDULED',
             id: { not: existing.id },
@@ -247,26 +264,26 @@ appointmentsRouter.patch('/:id', async (req, res) => {
         });
 
         if (conflict) {
-          res.status(409).json({ error: 'Seçilen yeni saatte doktorun başka bir randevusu bulunmaktadır.' });
-          return;
+          throw new Error('SLOT_OCCUPIED');
         }
       }
 
-      dataToUpdate.startsAt = newStartsAt;
-      dataToUpdate.endsAt = newEndsAt;
-    }
-
-    const updated = await prisma.appointment.update({
-      where: { id: existing.id },
-      data: dataToUpdate,
-      include: {
-        doctor: true,
-        patient: true,
-      },
+      return tx.appointment.update({
+        where: { id: existing.id },
+        data: dataToUpdate,
+        include: {
+          doctor: true,
+          patient: true,
+        },
+      });
     });
 
     res.json({ appointment: updated });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === 'SLOT_OCCUPIED') {
+      res.status(409).json({ error: 'Seçilen yeni saatte doktorun başka bir randevusu bulunmaktadır.' });
+      return;
+    }
     console.error('[api] Error updating appointment:', error);
     res.status(500).json({ error: 'Randevu güncellenemedi.' });
   }

@@ -1,8 +1,7 @@
 import { Router } from 'express';
 
 import { prisma } from '../lib/db/client.js';
-import { getDefaultClinic } from '../lib/db/clinic.js';
-import { requireAuth } from '../lib/auth/clerk.js';
+import { requireAuth, type AuthenticatedRequest } from '../lib/auth/clerk.js';
 
 export const doctorsRouter = Router();
 
@@ -11,18 +10,19 @@ doctorsRouter.use(requireAuth);
 
 /**
  * GET /api/doctors
- * Returns all doctors in the clinic with today's appointment counts.
+ * Returns all doctors in the tenant's clinic with today's appointment counts.
+ * Multi-tenant safe: uses req.clinicId.
  */
-doctorsRouter.get('/', async (_req, res) => {
+doctorsRouter.get('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
 
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     const doctors = await prisma.doctor.findMany({
-      where: { clinicId: clinic.id },
+      where: { clinicId },
       include: {
         _count: {
           select: {

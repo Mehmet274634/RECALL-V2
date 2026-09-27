@@ -2,6 +2,7 @@ import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
 
 export interface CheckAvailabilityParams {
+  clinicId?: string;
   doctorName?: string;
   doctorId?: string;
   specialty?: string;
@@ -26,7 +27,7 @@ const DAYS_MAP = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frida
 export async function checkAvailability(
   params: CheckAvailabilityParams,
 ): Promise<AvailableSlotResult> {
-  const clinic = await getDefaultClinic();
+  const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
   // 1. Resolve Target Date (default to tomorrow if not specified or invalid)
   let targetDate: Date;
@@ -49,14 +50,14 @@ export async function checkAvailability(
 
   if (params.doctorId) {
     doctor = await prisma.doctor.findFirst({
-      where: { id: params.doctorId, clinicId: clinic.id },
+      where: { id: params.doctorId, clinicId },
     });
   }
 
   if (!doctor && params.doctorName) {
     doctor = await prisma.doctor.findFirst({
       where: {
-        clinicId: clinic.id,
+        clinicId,
         name: { contains: params.doctorName, mode: 'insensitive' },
       },
     });
@@ -65,7 +66,7 @@ export async function checkAvailability(
   if (!doctor && params.specialty) {
     doctor = await prisma.doctor.findFirst({
       where: {
-        clinicId: clinic.id,
+        clinicId,
         specialty: { contains: params.specialty, mode: 'insensitive' },
       },
     });
@@ -74,7 +75,7 @@ export async function checkAvailability(
   if (!doctor) {
     // If no specific doctor matched, pick the first doctor in clinic
     doctor = await prisma.doctor.findFirst({
-      where: { clinicId: clinic.id },
+      where: { clinicId },
     });
   }
 
@@ -122,7 +123,7 @@ export async function checkAvailability(
 
   const existingAppointments = await prisma.appointment.findMany({
     where: {
-      clinicId: clinic.id,
+      clinicId,
       doctorId: doctor.id,
       status: 'SCHEDULED',
       startsAt: { gte: dayStart, lte: dayEnd },

@@ -1,4 +1,18 @@
+import crypto from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
+
+function safeCompare(a: string, b: string): boolean {
+  try {
+    const bufA = Buffer.from(a, 'utf-8');
+    const bufB = Buffer.from(b, 'utf-8');
+    if (bufA.length !== bufB.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Middleware: Validates that incoming requests to /api/vapi/server
@@ -21,15 +35,15 @@ export function validateVapiSecret(req: Request, res: Response, next: NextFuncti
   // Check Authorization: Bearer <secret> header (primary)
   const authHeader = req.headers.authorization;
   if (authHeader) {
-    const token = authHeader.replace(/^Bearer\s+/i, '');
-    if (token === serverSecret) {
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (safeCompare(token, serverSecret)) {
       return next();
     }
   }
 
   // Check legacy X-Vapi-Secret header (fallback)
   const legacySecret = req.headers['x-vapi-secret'];
-  if (legacySecret === serverSecret) {
+  if (typeof legacySecret === 'string' && safeCompare(legacySecret.trim(), serverSecret)) {
     return next();
   }
 

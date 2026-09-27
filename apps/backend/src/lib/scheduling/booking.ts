@@ -3,7 +3,11 @@ import { getDefaultClinic } from '../db/clinic.js';
 
 import type { Appointment } from '@prisma/client';
 
+export { normalizePhone, isValidPhone } from '../phone.js';
+import { normalizePhone } from '../phone.js';
+
 export interface BookAppointmentParams {
+  clinicId?: string;
   patientName: string;
   patientPhone: string;
   doctorName?: string;
@@ -22,30 +26,10 @@ export interface BookingResult {
 }
 
 /**
- * Normalizes phone numbers (e.g. "0532 123 45 67" -> "+905321234567")
- */
-export function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.startsWith('90') && digits.length === 12) {
-    return `+${digits}`;
-  }
-  if (digits.startsWith('0') && digits.length === 11) {
-    return `+90${digits.slice(1)}`;
-  }
-  if (digits.length === 10) {
-    return `+90${digits}`;
-  }
-  if (raw.startsWith('+')) {
-    return `+${digits}`;
-  }
-  return raw.trim();
-}
-
-/**
  * Books an appointment in a database transaction with overlap conflict prevention.
  */
 export async function bookAppointment(params: BookAppointmentParams): Promise<BookingResult> {
-  const clinic = await getDefaultClinic();
+  const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
   if (!params.patientName?.trim()) {
     return { success: false, message: 'Randevu oluşturmak için hasta adı gereklidir.' };
@@ -59,14 +43,14 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
   let doctor = null;
   if (params.doctorId) {
     doctor = await prisma.doctor.findFirst({
-      where: { id: params.doctorId, clinicId: clinic.id },
+      where: { id: params.doctorId, clinicId },
     });
   }
 
   if (!doctor && params.doctorName) {
     doctor = await prisma.doctor.findFirst({
       where: {
-        clinicId: clinic.id,
+        clinicId,
         name: { contains: params.doctorName, mode: 'insensitive' },
       },
     });
@@ -75,7 +59,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
   if (!doctor && params.specialty) {
     doctor = await prisma.doctor.findFirst({
       where: {
-        clinicId: clinic.id,
+        clinicId,
         specialty: { contains: params.specialty, mode: 'insensitive' },
       },
     });
@@ -83,7 +67,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
 
   if (!doctor) {
     doctor = await prisma.doctor.findFirst({
-      where: { clinicId: clinic.id },
+      where: { clinicId },
     });
   }
 
@@ -122,7 +106,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
   const patient = await prisma.patient.upsert({
     where: {
       clinicId_phoneNumber: {
-        clinicId: clinic.id,
+        clinicId,
         phoneNumber: normalizedPhone,
       },
     },
@@ -130,7 +114,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
       fullName: params.patientName.trim(),
     },
     create: {
-      clinicId: clinic.id,
+      clinicId,
       fullName: params.patientName.trim(),
       phoneNumber: normalizedPhone,
     },
@@ -143,7 +127,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
       where: { vapiCallId: params.callId },
       update: {},
       create: {
-        clinicId: clinic.id,
+        clinicId,
         vapiCallId: params.callId,
         summary: 'Devam eden sesli görüşme...',
       },
@@ -151,13 +135,16 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
     callLogId = callLog.id;
   }
 
-  // 4. Transaction: Check conflict and create appointment
+  // 4. Transaction: Check conflict and create appointment with row-level lock
   try {
     const createdAppointment = await prisma.$transaction(async (tx) => {
+      // Row-level lock on doctor record to serialize concurrent booking attempts for this doctor
+      await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${doctor.id} FOR UPDATE`;
+
       // Find overlapping appointments
       const conflict = await tx.appointment.findFirst({
         where: {
-          clinicId: clinic.id,
+          clinicId,
           doctorId: doctor.id,
           status: 'SCHEDULED',
           AND: [
@@ -173,7 +160,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
 
       return tx.appointment.create({
         data: {
-          clinicId: clinic.id,
+          clinicId,
           doctorId: doctor.id,
           patientId: patient.id,
           startsAt,

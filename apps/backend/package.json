@@ -20,6 +20,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.0",
+    "libphonenumber-js": "^1.13.14",
     "zod": "^3.24.0"
   },
   "devDependencies": {

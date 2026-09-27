@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> **Son güncelleme:** 2026-09-27 (ADR-010 eklendi — Faz 1 Vapi Tool Handlers, Randevu Çakışma Yönetimi ve Dashboard REST API)
+> **Son güncelleme:** 2026-09-27 (ADR-011 eklendi — Faz 1 Güvenlik ve Mimari Sertleştirme: Row-Level Locking, Multi-tenant İzolasyonu, Telefon Normalizasyonu ve Webhook Guard)
 > **Bu dosya:** Mimari/teknik kararların ADR (Architecture Decision Record) formatında gerekçeli kaydıdır. Kararlar silinmez; durumu değişirse (örn. "değiştirildi") yeni bir ADR eklenir ve eskisi "değiştirildi" olarak işaretlenip yeni olana referans verir.
 
 ---
@@ -285,6 +285,40 @@ Faz 1 kapsamında RECALL'in çekirdek işlevi olan uçtan uca sesli randevu alma
 - (+) Asistan ve sekreter aynı PostgreSQL veritabanını concurrency korumasıyla paylaşır; çifte randevu imkansız hale getirildi.
 - (+) Sekreter dashboard'u tüm randevu, arama ve doktor kayıtlarını anlık filtrelerle yönetebilir.
 - (+) KVKK ve veri minimizasyonu ilkelerine tam uyum sağlandı.
+
+---
+
+## ADR-011: Faz 1 Güvenlik ve Mimari Sertleştirme (Row-Level Locking, Multi-tenant İzolasyonu, Telefon Normalizasyonu ve Webhook Guard)
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+Faz 1 tamamlandıktan sonra yapılan mimari ve güvenlik kod incelemesinde 4 potansiyel risk noktası tespit edildi:
+1. **Race Condition (Çifte Randevu Riski):** PostgreSQL'in varsayılan READ COMMITTED izolasyon seviyesinde, aynı anda gelen iki eşzamanlı istek aynı boş slotu kontrol edip (`findFirst` null dönünce) ikisi de randevu oluşturabilirdi (phantom read / race condition).
+2. **Multi-tenant İzolasyonu:** `requireAuth` middleware'i JWT'yi doğrulamasına rağmen çözülen `clinicId` bilgisini sorgulara zorunlu kılmıyordu; endpoint'ler `getDefaultClinic()` çağırıyordu.
+3. **Telefon Numarası Normalizasyonu:** Farklı formatlarda (0532..., +90..., parantezli, tireli) girilen telefon numaraları `Patient` tablosunda mükerrer hasta kaydına ve sorgulama uyumsuzluğuna yol açabilirdi.
+4. **Vapi Webhook Güvenliği:** `/api/vapi/server` ucu üzerinden gelen bildirimlerin (özellikle `end-of-call-report`) kimlik doğrulamasının eksiksiz ve timing-attack korumalı yapılması gerekiyordu.
+
+**Karar:**
+1. **Doctor Row-Level Locking:**
+   - Randevu oluşturma (`bookAppointment`, `POST /api/appointments`), randevu güncelleme (`PATCH /api/appointments/:id`) ve randevu erteleme (`rescheduleAppointment`) akışlarında, transaction içine `SELECT id FROM doctors WHERE id = ${doctorId} FOR UPDATE` satır kilitleme eklendi.
+   - Böylece aynı doktor için aynı anda gelen tüm istekler veritabanı seviyesinde sıraya (serialize) alınır. İlk transaction commit edildikten sonra ikinci transaction hemen yeni commit edilmiş randevuyu görür ve `SLOT_OCCUPIED` ile güvenle reddeder. Farklı doktorlar birbirini kilitlemez.
+2. **Multi-tenant İzolasyonu (`req.clinicId`):**
+   - `AuthenticatedRequest` tipi genişletildi; `requireAuth` middleware'i token iddialarından (`clinicId`, `public_metadata.clinicId`, `org_id` veya MVP fallback) doğrulanmış klinik kimliğini çözüp `req.clinicId` alanına mühürler.
+   - Tüm dashboard route'ları (`/api/appointments`, `/api/call-logs`, `/api/doctors`, `/api/stats`) sadece `req.clinicId` üzerinden filtreleme yapar; istemciden gelen query/body parametrelerindeki `clinicId` geçersiz kılınır.
+3. **Telefon Normalizasyonu (`libphonenumber-js`):**
+   - `libphonenumber-js` kütüphanesi entegre edildi (`src/lib/phone.ts`).
+   - Türkiye (+90) varsayılan olmak üzere uluslararası E.164 formatına (`+905XXXXXXXXX`) dönüştüren ve doğrulayan yardımcı fonksiyonlar eklendi; tüm booking, lookup ve REST uçlarında tutarlı hale getirildi.
+4. **Timing-Safe Vapi Secret Guard:**
+   - `validateVapiSecret` middleware'i `crypto.timingSafeEqual` ile zamanlama saldırılarına (timing attacks) karşı dayanıklı hale getirildi.
+   - Router seviyesinde uygulandığı için hem `tool-calls` hem de `end-of-call-report` webhook'ları secret olmadan veya geçersiz secret ile asla işlenemez (401 döner).
+
+**Sonuçlar:**
+- (+) Neon PostgreSQL üzerinde yapılan eşzamanlı stres testinde (5 eşzamanlı istek) tam olarak 1 başarı ve 4 `SLOT_OCCUPIED` reddi ile race condition imkansız kılındı.
+- (+) Multi-tenant yetki aşımı (IDOR) riski ortadan kaldırıldı.
+- (+) Kullanıcı farklı tuşlama/boşluk formatlarında arasa dahi doğru hasta ve randevu anında eşleşir.
+- (+) Vapi sunucu güvenliği endüstriyel standarda yükseltildi.
 
 ---
 

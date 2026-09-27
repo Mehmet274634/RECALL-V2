@@ -1,8 +1,7 @@
 import { Router } from 'express';
 
 import { prisma } from '../lib/db/client.js';
-import { getDefaultClinic } from '../lib/db/clinic.js';
-import { requireAuth } from '../lib/auth/clerk.js';
+import { requireAuth, type AuthenticatedRequest } from '../lib/auth/clerk.js';
 
 export const statsRouter = Router();
 
@@ -10,11 +9,12 @@ statsRouter.use(requireAuth);
 
 /**
  * GET /api/stats/dashboard
- * Aggregated summary numbers for secretary dashboard
+ * Aggregated summary numbers for secretary dashboard.
+ * Multi-tenant safe: uses req.clinicId.
  */
-statsRouter.get('/dashboard', async (_req, res) => {
+statsRouter.get('/dashboard', async (req: AuthenticatedRequest, res) => {
   try {
-    const clinic = await getDefaultClinic();
+    const clinicId = req.clinicId!;
 
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
@@ -23,26 +23,26 @@ statsRouter.get('/dashboard', async (_req, res) => {
     const [todayAppointments, todayCompleted, todayCalls, totalPatients] = await Promise.all([
       prisma.appointment.count({
         where: {
-          clinicId: clinic.id,
+          clinicId,
           startsAt: { gte: startOfToday, lte: endOfToday },
           status: 'SCHEDULED',
         },
       }),
       prisma.appointment.count({
         where: {
-          clinicId: clinic.id,
+          clinicId,
           startsAt: { gte: startOfToday, lte: endOfToday },
           status: 'COMPLETED',
         },
       }),
       prisma.callLog.count({
         where: {
-          clinicId: clinic.id,
+          clinicId,
           createdAt: { gte: startOfToday, lte: endOfToday },
         },
       }),
       prisma.patient.count({
-        where: { clinicId: clinic.id },
+        where: { clinicId },
       }),
     ]);
 

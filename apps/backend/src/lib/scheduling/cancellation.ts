@@ -1,14 +1,16 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { normalizePhone } from './booking.js';
+import { normalizePhone } from '../phone.js';
 
 export interface CancelAppointmentParams {
+  clinicId?: string;
   appointmentId?: string;
   patientPhone?: string;
   patientName?: string;
 }
 
 export interface RescheduleAppointmentParams {
+  clinicId?: string;
   appointmentId?: string;
   patientPhone?: string;
   patientName?: string;
@@ -25,13 +27,13 @@ export interface ModificationResult {
  * Cancels an existing scheduled appointment.
  */
 export async function cancelAppointment(params: CancelAppointmentParams): Promise<ModificationResult> {
-  const clinic = await getDefaultClinic();
+  const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
   let appointment = null;
 
   if (params.appointmentId) {
     appointment = await prisma.appointment.findFirst({
-      where: { id: params.appointmentId, clinicId: clinic.id, status: 'SCHEDULED' },
+      where: { id: params.appointmentId, clinicId, status: 'SCHEDULED' },
       include: { doctor: true, patient: true },
     });
   }
@@ -39,11 +41,11 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
   if (!appointment && params.patientPhone) {
     const normPhone = normalizePhone(params.patientPhone);
     const patient = await prisma.patient.findFirst({
-      where: { clinicId: clinic.id, phoneNumber: normPhone },
+      where: { clinicId, phoneNumber: normPhone },
     });
     if (patient) {
       appointment = await prisma.appointment.findFirst({
-        where: { clinicId: clinic.id, patientId: patient.id, status: 'SCHEDULED' },
+        where: { clinicId, patientId: patient.id, status: 'SCHEDULED' },
         include: { doctor: true, patient: true },
         orderBy: { startsAt: 'asc' },
       });
@@ -52,11 +54,11 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
 
   if (!appointment && params.patientName) {
     const patient = await prisma.patient.findFirst({
-      where: { clinicId: clinic.id, fullName: { contains: params.patientName, mode: 'insensitive' } },
+      where: { clinicId, fullName: { contains: params.patientName, mode: 'insensitive' } },
     });
     if (patient) {
       appointment = await prisma.appointment.findFirst({
-        where: { clinicId: clinic.id, patientId: patient.id, status: 'SCHEDULED' },
+        where: { clinicId, patientId: patient.id, status: 'SCHEDULED' },
         include: { doctor: true, patient: true },
         orderBy: { startsAt: 'asc' },
       });
@@ -91,13 +93,13 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
  * Reschedules an existing scheduled appointment to a new date and time.
  */
 export async function rescheduleAppointment(params: RescheduleAppointmentParams): Promise<ModificationResult> {
-  const clinic = await getDefaultClinic();
+  const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
   let appointment = null;
 
   if (params.appointmentId) {
     appointment = await prisma.appointment.findFirst({
-      where: { id: params.appointmentId, clinicId: clinic.id, status: 'SCHEDULED' },
+      where: { id: params.appointmentId, clinicId, status: 'SCHEDULED' },
       include: { doctor: true, patient: true },
     });
   }
@@ -105,11 +107,11 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
   if (!appointment && params.patientPhone) {
     const normPhone = normalizePhone(params.patientPhone);
     const patient = await prisma.patient.findFirst({
-      where: { clinicId: clinic.id, phoneNumber: normPhone },
+      where: { clinicId, phoneNumber: normPhone },
     });
     if (patient) {
       appointment = await prisma.appointment.findFirst({
-        where: { clinicId: clinic.id, patientId: patient.id, status: 'SCHEDULED' },
+        where: { clinicId, patientId: patient.id, status: 'SCHEDULED' },
         include: { doctor: true, patient: true },
         orderBy: { startsAt: 'asc' },
       });
@@ -149,12 +151,15 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
     };
   }
 
-  // Conflict check in transaction
+  // Conflict check in transaction with row-level lock on doctor
   try {
     await prisma.$transaction(async (tx) => {
+      // Row-level lock on doctor record to prevent concurrent slot conflicts
+      await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${appointment.doctorId} FOR UPDATE`;
+
       const conflict = await tx.appointment.findFirst({
         where: {
-          clinicId: clinic.id,
+          clinicId,
           doctorId: appointment.doctorId,
           status: 'SCHEDULED',
           id: { not: appointment.id },
