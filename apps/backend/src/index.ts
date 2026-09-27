@@ -4,6 +4,10 @@ import cors from 'cors';
 
 import { vapiRouter } from './routes/vapi/server.js';
 import { healthRouter } from './routes/health.js';
+import { appointmentsRouter } from './routes/appointments.js';
+import { callLogsRouter } from './routes/call-logs.js';
+import { doctorsRouter } from './routes/doctors.js';
+import { statsRouter } from './routes/stats.js';
 
 const app = express();
 
@@ -16,9 +20,14 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g., server-to-server, curl)
+      // Allow requests with no origin (e.g., server-to-server, curl, mobile)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
+      // Allow localhost or vercel preview/prod domains
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.includes('localhost') ||
+        origin.endsWith('.vercel.app')
+      ) {
         return callback(null, true);
       }
       return callback(new Error(`Origin ${origin} not allowed by CORS`));
@@ -33,6 +42,10 @@ app.use(express.json());
 // --- Route Mounts ---
 app.use('/api/health', healthRouter);
 app.use('/api/vapi/server', vapiRouter);
+app.use('/api/appointments', appointmentsRouter);
+app.use('/api/call-logs', callLogsRouter);
+app.use('/api/doctors', doctorsRouter);
+app.use('/api/stats', statsRouter);
 
 // --- Start Server ---
 const PORT = process.env.PORT || 3001;

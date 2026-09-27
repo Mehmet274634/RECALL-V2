@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> **Son güncelleme:** 2026-09-27 (ADR-009 eklendi)
+> **Son güncelleme:** 2026-09-27 (ADR-010 eklendi — Faz 1 Vapi Tool Handlers, Randevu Çakışma Yönetimi ve Dashboard REST API)
 > **Bu dosya:** Mimari/teknik kararların ADR (Architecture Decision Record) formatında gerekçeli kaydıdır. Kararlar silinmez; durumu değişirse (örn. "değiştirildi") yeni bir ADR eklenir ve eskisi "değiştirildi" olarak işaretlenip yeni olana referans verir.
 
 ---
@@ -250,6 +250,41 @@ datasource db {
 - (+) Serverless API istekleri havuzlu bağlantıyı (`url`), Prisma migration'ları doğrudan bağlantıyı (`directUrl`) kullanarak optimum performansta ve hatasız çalışır.
 - (+) Vercel / Neon otomatik değişken adlandırmasıyla birebir uyum sağlandı.
 - (–) Lokal geliştiricilerin `.env` dosyasında her iki değişkeni de tanımlaması gerekir (`.env.example` güncellendi).
+
+---
+
+## ADR-010: Vapi Tool Handlers, Randevu Çakışma Yönetimi ve Sekreter Dashboard REST API Mimarisi
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+Faz 1 kapsamında RECALL'in çekirdek işlevi olan uçtan uca sesli randevu alma akışı (Vapi asistanı ile konuşma) ve bu verilerin klinik sekreteri tarafından yönetileceği dashboard arayüzü kurulmuştur. Bu kapsamda:
+1. Vapi tool çağrılarının (`check_availability`, `book_appointment`, `lookup_appointment`, `cancel_appointment`, `reschedule_appointment`, `transfer_call`) işlenmesi,
+2. Çifte randevu (çakışma) riskinin veritabanı seviyesinde engellenmesi,
+3. Hasta gizliliği (KVKK) uyarınca çağrı kayıtlarında teşhis/sağlık verisi saklanmaması,
+4. Sekreter paneli için REST CRUD API'larının Clerk JWT ile korunması gerekiyordu.
+
+**Karar:**
+1. **Tool Handlers & Giriş Doğrulama:**
+   - Her tool handler (`src/lib/vapi/tools/*.ts`) Zod şeması ile parametreleri doğrular.
+   - LLM'lerin parametre adlandırmasındaki değişkenliklerine karşı (örn. `doctorName` / `doctor_name`, `date` / `newDate`) toleranslı şemalar kullanıldı.
+   - Tool yanıtları Vapi'nin doğrudan seslendirebileceği doğal Türkçe cümleler olarak formatlandı.
+2. **Randevu Çakışma Önleme (Transactions):**
+   - Tüm randevu oluşturma ve yeniden planlama işlemleri Prisma `$transaction` içinde çalıştırılır.
+   - Belirlenen doktor ve zaman aralığı (`startsAt < newEndsAt && endsAt > newStartsAt`) kontrol edilir. Çakışma varsa `SLOT_OCCUPIED` hatası fırlatılarak işlem geri alınır (rollback) ve kullanıcıya kibar bir alternatif seçme mesajı dönülür.
+3. **Çağrı Kaydı ve Gizlilik:**
+   - `end-of-call-report` webhook'u ile `call_logs` tablosuna kayıt oluşturulur.
+   - Özetler operasyonel kategori ("Randevu Talebi", "Randevu İptali", "Randevu Değişikliği", "Genel Bilgi") ile etiketlenir; hasta sağlık/teşhis detayları arındırılır.
+   - Çağrı esnasında oluşturulan randevular, `CallLog` ID'si ile (`createdViaCallId`) ilişkilendirilir ve dashboard'da "Vapi AI" kanalı olarak etiketlenir.
+4. **Dashboard REST API & Auth:**
+   - `/api/appointments`, `/api/call-logs`, `/api/doctors`, `/api/stats` endpoint'leri Express üzerinde oluşturuldu.
+   - Clerk backend SDK (`@clerk/backend`) ile `requireAuth` middleware'i eklendi; local geliştirmede placeholder anahtarlarla çalışmayı engellemeyecek dev fallback mekanizması kuruldu.
+
+**Sonuçlar:**
+- (+) Asistan ve sekreter aynı PostgreSQL veritabanını concurrency korumasıyla paylaşır; çifte randevu imkansız hale getirildi.
+- (+) Sekreter dashboard'u tüm randevu, arama ve doktor kayıtlarını anlık filtrelerle yönetebilir.
+- (+) KVKK ve veri minimizasyonu ilkelerine tam uyum sağlandı.
 
 ---
 

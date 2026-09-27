@@ -1,0 +1,156 @@
+/**
+ * RECALL API Client
+ * Talks to apps/backend REST endpoints.
+ */
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  // If Clerk is available on window, attach session token
+  try {
+    const clerk = (window as unknown as { Clerk?: { session?: { getToken: () => Promise<string | null> } } }).Clerk;
+    if (clerk?.session) {
+      const token = await clerk.session.getToken();
+      if (token) {
+        return { Authorization: `Bearer ${token}` };
+      }
+    }
+  } catch {
+    // Ignore in dev
+  }
+  return {};
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const authHeader = await getAuthHeader();
+  const url = `${API_BASE_URL}${endpoint}`;
+
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    let errorMsg = `HTTP Error: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.error) errorMsg = data.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(errorMsg);
+  }
+
+  return res.json();
+}
+
+export interface Doctor {
+  id: string;
+  name: string;
+  specialty: string | null;
+  workingHours?: Record<string, unknown>;
+  todayAppointmentsCount?: number;
+}
+
+export interface Patient {
+  id: string;
+  fullName: string;
+  phoneNumber: string;
+}
+
+export interface Appointment {
+  id: string;
+  doctorId: string;
+  patientId: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'SCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+  createdViaCallId?: string | null;
+  doctor: {
+    id: string;
+    name: string;
+    specialty: string | null;
+  };
+  patient: {
+    id: string;
+    fullName: string;
+    phoneNumber: string;
+  };
+}
+
+export interface CallLog {
+  id: string;
+  vapiCallId: string;
+  transcript: string | null;
+  recordingUrl: string | null;
+  summary: string | null;
+  endedReason: string | null;
+  createdAt: string;
+  appointments?: Array<{
+    id: string;
+    startsAt: string;
+    status: string;
+    doctor: { name: string };
+    patient: { fullName: string };
+  }>;
+}
+
+export interface DashboardStats {
+  todayAppointments: number;
+  todayCompleted: number;
+  todayCalls: number;
+  totalPatients: number;
+}
+
+export const api = {
+  getStats: () => request<{ stats: DashboardStats }>('/api/stats/dashboard'),
+
+  getAppointments: (params?: { doctorId?: string; date?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.doctorId) query.set('doctorId', params.doctorId);
+    if (params?.date) query.set('date', params.date);
+    if (params?.status) query.set('status', params.status);
+    const qs = query.toString();
+    return request<{ appointments: Appointment[] }>(`/api/appointments${qs ? `?${qs}` : ''}`);
+  },
+
+  createAppointment: (data: {
+    patientName: string;
+    patientPhone: string;
+    doctorId: string;
+    startsAt: string;
+    durationMinutes?: number;
+  }) =>
+    request<{ appointment: Appointment }>('/api/appointments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateAppointment: (
+    id: string,
+    data: {
+      status?: 'SCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+      startsAt?: string;
+      endsAt?: string;
+      doctorId?: string;
+    },
+  ) =>
+    request<{ appointment: Appointment }>(`/api/appointments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  getCallLogs: (params?: { limit?: number; date?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.date) query.set('date', params.date);
+    const qs = query.toString();
+    return request<{ callLogs: CallLog[] }>(`/api/call-logs${qs ? `?${qs}` : ''}`);
+  },
+
+  getDoctors: () => request<{ doctors: Doctor[] }>('/api/doctors'),
+};

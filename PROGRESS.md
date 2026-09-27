@@ -1,11 +1,51 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (KICKOFF_PROMPT.md eklendi)
+> **Son güncelleme:** 2026-09-27 (Faz 1 — Uçtan Uca Randevu Akışı ve Sekreter Dashboard'u tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
 
 ---
 
-## 2026-09-27 — Faz 0 Altyapı İskeletinin Kurulması
+## 2026-09-27 — Faz 1: Uçtan Uca Randevu Akışı ve Sekreter Dashboard'u Tamamlandı
+
+**Ne yapıldı:**
+1. **Veritabanı Hazırlığı:**
+   - Neon PostgreSQL üzerinde veritabanı seed script'i çalıştırıldı (`pnpm --filter backend db:seed`).
+   - "Recall Sağlık Kliniği", 3 uzman hekim (Dahiliye, Kardiyoloji, KBB), örnek hastalar ve başlangıç randevu kayıtları oluşturuldu.
+2. **Scheduling Katmanı & Randevu Mantığı:**
+   - `apps/backend/src/lib/scheduling/`:
+     - `availability.ts`: Hekimlerin mesai saatleri (09:00-17:00 vb.) ve gün içindeki mevcut randevuları taranarak boş 30 dakikalık slotları dinamik hesaplayan yapı kuruldu.
+     - `booking.ts`: Hasta eşleştirme/oluşturma ve Prisma `$transaction` içinde çakışma (overlap) kontrolü ile atomik randevu kaydı gerçekleştirildi.
+     - `lookup.ts`: Hasta telefon/isim ile aktif randevuları sorgulama fonksiyonu yazıldı.
+     - `cancellation.ts`: Randevu iptali ve yeniden planlama (reschedule) işlemleri geliştirildi.
+3. **Vapi Tool Handlers & Dispatcher:**
+   - `src/lib/vapi/tools/`: `check_availability`, `book_appointment`, `lookup_appointment`, `cancel_appointment`, `reschedule_appointment`, `transfer_call` fonksiyonları Zod validasyonu ile kodlandı.
+   - `src/lib/vapi/server-handler.ts`: Gelen `tool-calls` istekleri ilgili tool'lara delege edilip senkron Türkçe yanıt dönecek şekilde genişletildi.
+   - `end-of-call-report` webhook'u ile çağrı bittiğinde `CallLog` tablosuna kayıt açılması, özetin kategoriye göre sınıflandırılması ("Randevu Talebi", "Randevu İptali", "Genel Bilgi") ve görüşmede oluşturulan randevunun `createdViaCallId` ile bağlanması sağlandı.
+4. **Dashboard REST API:**
+   - `GET /api/appointments`, `GET /api/appointments/:id`, `POST /api/appointments`, `PATCH /api/appointments/:id` (filtreli ve manuel yönetim).
+   - `GET /api/call-logs`, `GET /api/call-logs/:id` (arama geçmişi ve transkript detayları).
+   - `GET /api/doctors` (hekim listesi ve bugünkü randevu sayıları).
+   - `GET /api/stats/dashboard` (özet istatistik sayıları).
+   - Clerk JWT kimlik doğrulaması (`requireAuth`) middleware'i kuruldu.
+5. **Frontend Sekreter Dashboard'u:**
+   - `apps/frontend/src/components/layout/SecretaryLayout.tsx`: Design System'e uygun sabit sol sidebar, klinik kimliği, sekreter profil alanı ve çıkış aksiyonu.
+   - `apps/frontend/src/pages/dashboard/DashboardPage.tsx`: Günlük özet kartları, hızlı tarih filtreleri (Bugün, Yarın, Tüm Tarihler), doktor ve durum filtreleri, arama kutusu, randevu tablosu ve "+ Yeni Randevu" modalı.
+   - `apps/frontend/src/pages/dashboard/CallsPage.tsx`: Sesli arama geçmişi, kategori rozetleri ve çift taraflı (Hasta/Asistan) konuşma transkripti inceleme modalı.
+   - `apps/frontend/src/pages/dashboard/DoctorsPage.tsx`: Hekimlerin uzmanlık, mesai saatleri ve bugünkü randevu sayılarını gösteren modern kartlar.
+   - `LoginPage.tsx`: Giriş formu panelle entegre edildi.
+6. **Uçtan Uca Test ve Simülasyon:**
+   - `simulate-vapi-call.ts` script'i ile tam bir sesli asistan görüşmesi simüle edildi: `check_availability` -> `book_appointment` -> `end-of-call-report`.
+   - Çakışma kontrolü test edildi (aynı saate ikinci randevu denenip engellendi).
+   - Yeni oluşturulan randevu ve arama kaydının dashboard'da "Vapi AI" kanal rozetiyle anında listelendiği tarayıcıda görsel olarak teyit edildi.
+   - Mimari kararlar `DECISIONS.md#adr-010` altına kaydedildi.
+
+**Karşılaşılan sorun / açık nokta:**
+- Yok. Tüm testler ve monorepo build'i (`pnpm -r build`) hatasız tamamlandı.
+
+**Nasıl çözüldü / sonraki adım:**
+- Faz 1 başarıyla tamamlandı. Sıradaki adım: Canlı Vapi Talk / telefon hattı entegrasyonu ve klinik kurallarına göre asistan prompt optimizasyonu (Faz 2).
+
+---
 
 **Ne yapıldı:**
 - Monorepo (`pnpm-workspace.yaml`) kök dizini kuruldu ve bağımlılıklar yapılandırıldı.

@@ -15,6 +15,6 @@ vapiRouter.use(validateVapiSecret);
  * This route ONLY dispatches to lib/vapi/server-handler.ts based on message.type.
  * NO business logic is written here — ever.
  */
-vapiRouter.post('/', (req, res) => {
-  handleServerMessage(req, res);
+vapiRouter.post('/', async (req, res) => {
+  await handleServerMessage(req, res);
 });

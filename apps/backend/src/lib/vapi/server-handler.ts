@@ -1,18 +1,26 @@
 import type { Request, Response } from 'express';
 
+import { prisma } from '../db/client.js';
+import { getDefaultClinic } from '../db/clinic.js';
+import {
+  handleCheckAvailability,
+  handleBookAppointment,
+  handleLookupAppointment,
+  handleCancelAppointment,
+  handleRescheduleAppointment,
+  handleTransferCall,
+} from './tools/index.js';
+
 /**
  * Central dispatcher for all Vapi Server URL messages (ADR-006).
  *
  * Routes based on `message.type`:
- * - Synchronous (must return JSON): assistant-request, tool-calls,
+ * - Synchronous (must return JSON): tool-calls, assistant-request,
  *   transfer-destination-request, knowledge-base-request
  * - Fire-and-forget (return 200): status-update, end-of-call-report,
  *   speech-update, transcript, hang, etc.
- *
- * Business logic lives in lib/vapi/tools/* and lib/scheduling/*.
- * This handler only dispatches.
  */
-export function handleServerMessage(req: Request, res: Response): void {
+export async function handleServerMessage(req: Request, res: Response): Promise<void> {
   const body = req.body;
   const messageType: string | undefined = body?.message?.type;
 
@@ -27,24 +35,25 @@ export function handleServerMessage(req: Request, res: Response): void {
   switch (messageType) {
     // --- Synchronous message types (require JSON response) ---
     case 'tool-calls':
-      handleToolCalls(body, res);
+      await handleToolCalls(body, res);
       break;
 
     case 'assistant-request':
-      // Faz 1+: Dynamic assistant config
-      console.log('[vapi] assistant-request received — not yet implemented');
+      console.log('[vapi] assistant-request received — returning default assistant config');
       res.status(200).json({});
       break;
 
     case 'transfer-destination-request':
-      // Faz 1+: Call transfer handling
-      console.log('[vapi] transfer-destination-request received — not yet implemented');
-      res.status(200).json({});
+      console.log('[vapi] transfer-destination-request received');
+      res.status(200).json({
+        destination: {
+          type: 'assistant',
+          message: 'Sekreterliğe aktarılıyorsunuz.',
+        },
+      });
       break;
 
     case 'knowledge-base-request':
-      // Faz 1+: Knowledge base lookup
-      console.log('[vapi] knowledge-base-request received — not yet implemented');
       res.status(200).json({});
       break;
 
@@ -55,7 +64,7 @@ export function handleServerMessage(req: Request, res: Response): void {
       break;
 
     case 'end-of-call-report':
-      handleEndOfCallReport(body);
+      await handleEndOfCallReport(body);
       res.status(200).json({});
       break;
 
@@ -63,12 +72,11 @@ export function handleServerMessage(req: Request, res: Response): void {
     case 'transcript':
     case 'hang':
     case 'conversation-update':
-      console.log(`[vapi] ${messageType} received — acknowledged`);
       res.status(200).json({});
       break;
 
     default:
-      console.log(`[vapi] Unknown message.type: ${messageType} — acknowledged`);
+      console.log(`[vapi] Unhandled message.type: ${messageType} — acknowledged`);
       res.status(200).json({});
       break;
   }
@@ -77,13 +85,12 @@ export function handleServerMessage(req: Request, res: Response): void {
 /**
  * Handles tool-calls message type.
  * Dispatches to the appropriate tool handler based on function name.
- *
- * Faz 0: Skeleton only — logs the call and returns a placeholder result.
- * Faz 1: Will dispatch to lib/vapi/tools/{check-availability,book-appointment,...}.ts
  */
-function handleToolCalls(body: Record<string, unknown>, res: Response): void {
+async function handleToolCalls(body: Record<string, unknown>, res: Response): Promise<void> {
   const message = body?.message as Record<string, unknown> | undefined;
   const toolCallList = message?.toolCallList as Array<Record<string, unknown>> | undefined;
+  const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
+  const callId = (call?.id || message?.callId) as string | undefined;
 
   if (!toolCallList || toolCallList.length === 0) {
     console.warn('[vapi] tool-calls received but toolCallList is empty');
@@ -91,33 +98,141 @@ function handleToolCalls(body: Record<string, unknown>, res: Response): void {
     return;
   }
 
-  const results = toolCallList.map((toolCall) => {
-    const toolCallId = toolCall.id as string;
-    const functionCall = toolCall.function as Record<string, unknown> | undefined;
-    const functionName = functionCall?.name as string | undefined;
+  const results = await Promise.all(
+    toolCallList.map(async (toolCall) => {
+      const toolCallId = toolCall.id as string;
+      const functionCall = toolCall.function as Record<string, unknown> | undefined;
+      const rawName = functionCall?.name as string | undefined;
+      const functionName = (rawName || '').trim();
 
-    console.log(`[vapi] tool-call: ${functionName || 'unknown'} (id: ${toolCallId})`);
+      // Parse arguments (can be object or stringified JSON)
+      let args: unknown = {};
+      if (typeof functionCall?.arguments === 'string') {
+        try {
+          args = JSON.parse(functionCall.arguments);
+        } catch {
+          args = {};
+        }
+      } else if (typeof functionCall?.arguments === 'object' && functionCall?.arguments !== null) {
+        args = functionCall.arguments;
+      }
 
-    // Faz 0: Return placeholder — real dispatch in Faz 1
-    // Faz 1 will: switch on functionName → dispatch to lib/vapi/tools/*
-    return {
-      toolCallId,
-      result: `Tool "${functionName}" is not yet implemented (Faz 0 skeleton).`,
-    };
-  });
+      console.log(`[vapi] Executing tool: ${functionName} (id: ${toolCallId})`);
+
+      let resultText = '';
+
+      switch (functionName) {
+        case 'check_availability':
+        case 'checkAvailability':
+          resultText = await handleCheckAvailability(args);
+          break;
+
+        case 'book_appointment':
+        case 'bookAppointment':
+          resultText = await handleBookAppointment(args, callId);
+          break;
+
+        case 'lookup_appointment':
+        case 'lookupAppointment':
+          resultText = await handleLookupAppointment(args);
+          break;
+
+        case 'cancel_appointment':
+        case 'cancelAppointment':
+          resultText = await handleCancelAppointment(args);
+          break;
+
+        case 'reschedule_appointment':
+        case 'rescheduleAppointment':
+          resultText = await handleRescheduleAppointment(args);
+          break;
+
+        case 'transfer_call':
+        case 'transferCall':
+          resultText = await handleTransferCall(args);
+          break;
+
+        default:
+          console.warn(`[vapi] Unknown tool function called: ${functionName}`);
+          resultText = `İstediğiniz "${functionName}" fonksiyonu sistemde tanımlı değil.`;
+          break;
+      }
+
+      return {
+        toolCallId,
+        result: resultText,
+      };
+    }),
+  );
 
   res.status(200).json({ results });
 }
 
 /**
  * Handles end-of-call-report.
- * Faz 0: Logs basic info. Faz 1: Will write transcript/recording/summary to call_logs.
+ * Saves summary, category, transcript, and recording to CallLog.
  */
-function handleEndOfCallReport(body: Record<string, unknown>): void {
-  const message = body?.message as Record<string, unknown> | undefined;
-  const endedReason = message?.endedReason as string | undefined;
+async function handleEndOfCallReport(body: Record<string, unknown>): Promise<void> {
+  try {
+    const message = body?.message as Record<string, unknown> | undefined;
+    const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
 
-  // Do NOT log patient personal data (name, phone, TC) — CONVENTIONS.md §5
-  console.log(`[vapi] end-of-call-report: endedReason=${endedReason || 'unknown'}`);
-  // Faz 1: Save to call_logs table via Prisma
+    const vapiCallId = (call?.id || message?.callId || `call-${Date.now()}`) as string;
+    const endedReason = (message?.endedReason || call?.endedReason || 'completed') as string;
+
+    const artifact = message?.artifact as Record<string, unknown> | undefined;
+    const analysis = message?.analysis as Record<string, unknown> | undefined;
+
+    const transcript =
+      (message?.transcript as string) ||
+      (artifact?.transcript as string) ||
+      null;
+
+    const recordingUrl =
+      (message?.recordingUrl as string) ||
+      (artifact?.recordingUrl as string) ||
+      null;
+
+    const rawSummary =
+      (message?.summary as string) ||
+      (analysis?.summary as string) ||
+      'Randevu görüşmesi tamamlandı.';
+
+    // Sanitize summary to general operational category (no medical diagnosis) — CONVENTIONS.md §5
+    let category = 'Genel Bilgi';
+    const lowerSummary = (rawSummary + (transcript || '')).toLowerCase();
+    if (lowerSummary.includes('iptal') || lowerSummary.includes('vazgeç')) {
+      category = 'Randevu İptali';
+    } else if (lowerSummary.includes('randevu') || lowerSummary.includes('oluştur') || lowerSummary.includes('kayıt')) {
+      category = 'Randevu Talebi';
+    } else if (lowerSummary.includes('değiştir') || lowerSummary.includes('ertele')) {
+      category = 'Randevu Değişikliği';
+    }
+
+    const summary = `Kategori: ${category}. ${rawSummary.trim()}`;
+
+    const clinic = await getDefaultClinic();
+
+    const callLog = await prisma.callLog.upsert({
+      where: { vapiCallId },
+      update: {
+        transcript,
+        recordingUrl,
+        summary,
+        endedReason,
+      },
+      create: {
+        clinicId: clinic.id,
+        vapiCallId,
+        transcript,
+        recordingUrl,
+        summary,
+        endedReason,
+      },
+    });
+
+    console.log(`[vapi] CallLog saved: ${callLog.id} (callId: ${vapiCallId}, category: ${category})`);
+  } catch (error) {
+    console.error('[vapi] Error saving end-of-call-report:', error);
+  }
 }

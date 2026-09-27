@@ -1,13 +1,6 @@
-/**
- * Vapi tool handlers placeholder.
- *
- * Faz 1 will implement:
- * - check-availability.ts
- * - book-appointment.ts
- * - cancel-appointment.ts
- * - reschedule-appointment.ts
- *
- * Each tool handler receives the parsed function arguments from Vapi
- * and returns a result string that Vapi reads back to the caller.
- */
-export {};
+export * from './check-availability.js';
+export * from './book-appointment.js';
+export * from './lookup-appointment.js';
+export * from './cancel-appointment.js';
+export * from './reschedule-appointment.js';
+export * from './transfer-call.js';

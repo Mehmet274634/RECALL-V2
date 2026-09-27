@@ -1,14 +1,28 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
 import LandingPage from './pages/landing/LandingPage';
 import LoginPage from './pages/LoginPage';
+import SecretaryLayout from './components/layout/SecretaryLayout';
+import DashboardPage from './pages/dashboard/DashboardPage';
+import CallsPage from './pages/dashboard/CallsPage';
+import DoctorsPage from './pages/dashboard/DoctorsPage';
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
-      {/* Faz 2: Secretary dashboard routes will be added here, wrapped in SecretaryLayout */}
+
+      {/* Secretary Dashboard Shell */}
+      <Route path="/dashboard" element={<SecretaryLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="calls" element={<CallsPage />} />
+        <Route path="doctors" element={<DoctorsPage />} />
+        {/* Redirect unknown dashboard sub-routes */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

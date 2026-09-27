@@ -1,44 +1,74 @@
 # PLAN_ACTIONS.md
 
-> **Son güncelleme:** 2026-09-27 (Vite frontend + Express backend monorepo mimarisine geçiş — bkz. ADR-007)
+> **Son güncelleme:** 2026-09-27 (Faz 1 — Uçtan Uca Randevu Akışı ve Sekreter Dashboard'u tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Her session başında buradan devam et, her session sonunda güncelle. Fazların genel açıklaması için `PLAN.md`'ye bakınız.
 
-## Aktif Faz: Faz 0 — Altyapı Kurulumu (bkz. `PLAN.md#faz-0`)
+## Tamamlanan Faz: Faz 0 — Altyapı Kurulumu (bkz. `PLAN.md#faz-0`)
 
 - [x] 7 dokümantasyon dosyasının (CLAUDE, ARCHITECTURE, PLAN, PLAN_ACTIONS, PROGRESS, DECISIONS, CONVENTIONS) oluşturulması
 - [x] Sesli ajan platformu kararı: Retell → **Vapi** (bkz. `DECISIONS.md#adr-005`)
 - [x] Tech stack seçimlerinin (Postgres/Prisma, Clerk) kullanıcı tarafından onaylanması (bkz. `DECISIONS.md` ADR-003/004)
 - [x] Vapi webhook/tool-call ayrımının netleştirilmesi: **tek Server URL**, `message.type`'a göre dispatch (bkz. `DECISIONS.md#adr-006`, `ARCHITECTURE.md` § 3)
-- [x] Framework kararının düzeltilmesi: Next.js yerine **Vite frontend + Express backend (monorepo)** — mevcut `apps/frontend` kod tabanı ve Design System dokümanıyla uyumlu hale getirildi (bkz. `DECISIONS.md#adr-007`)
-- [x] Mevcut `apps/frontend` kodunun (Design System'de tarif edilen) hangi repoda/durumda olduğunun doğrulanması — sıfırdan oluşturulmasına karar verildi
-- [ ] **🔵 ŞU AN ÜZERİNDE ÇALIŞILIYOR:** GitHub repo'sunun oluşturulması/doğrulanması (`recall` adıyla, private) ve Vercel projelerinin oluşturulması
+- [x] Framework kararının düzeltilmesi: Next.js yerine **Vite frontend + Express backend (monorepo)** (bkz. `DECISIONS.md#adr-007`)
 - [x] `pnpm-workspace.yaml` ve kök `package.json` kurulumu (workspaces: `apps/*`)
-- [x] `apps/frontend` Vite + React + TS + Tailwind v4 + Framer Motion ile sıfırdan iskeletin oluşturulması ve Design System'in (`index.css`) uygulanması
+- [x] `apps/frontend` Vite + React + TS + Tailwind v4 + Framer Motion ile iskeletin oluşturulması ve Design System'in uygulanması
 - [x] `apps/backend` iskeletinin oluşturulması: Node + TypeScript + Express
-- [ ] İki ayrı Vercel projesinin oluşturulması ve GitHub repo'suna bağlanması: `apps/frontend` (statik Vite build) ve `apps/backend` (Node API)
-- [x] Express'in Vercel serverless fonksiyon modeline nasıl uyarlanacağının netleştirilmesi (bkz. `DECISIONS.md#adr-008` — `@vercel/node` catch-all handler kuruldu)
+- [x] İki ayrı Vercel projesinin oluşturulması ve GitHub repo'suna bağlanması (`apps/frontend` ve `apps/backend`)
+- [x] Express'in Vercel serverless fonksiyon modeline uyarlanması (`@vercel/node` catch-all handler — bkz. `DECISIONS.md#adr-008`)
 - [x] ESLint + Prettier konfigürasyonunun her iki pakette de kurulması (bkz. `CONVENTIONS.md`)
-- [ ] Neon veritabanı değişkenlerinin (`DATABASEV2_DATABASE_URL` ve `DATABASEV2_DATABASE_URL_UNPOOLED`) `apps/backend` Vercel proje env değişkeni olarak tanımlanması
-- [x] Prisma kurulumu (`apps/backend/prisma`) ve ilk şemanın (`Clinic`, `Doctor`, `Patient`, `Appointment`, `CallLog` modelleri) yazılması
-- [ ] İlk migration'ın çalıştırılması (`pnpm --filter backend prisma migrate dev --name init`) - (Veritabanı bekleniyor)
-- [ ] Vapi hesabının açılması, bir test **assistant**'ının oluşturulması (model/voice/transcriber seçimi ile)
-- [ ] Vapi'de kullanılacak telefon numarasının edinilmesi (Vapi'nin kendi sağladığı numara veya mevcut bir Twilio numarasının Vapi'ye bağlanması)
-- [x] `apps/backend/src/routes/vapi/server.ts` tek route iskeletinin oluşturulması (şimdilik sadece `message.type`'ı loglayıp `200` dönen bir dispatcher)
-- [x] `apps/backend/src/lib/vapi/server-handler.ts` içinde `message.type`'a göre dispatch iskeletinin kurulması (tool-calls → `lib/vapi/tools/*`, diğerleri → log/kaydet)
-- [ ] Vapi assistant'ının **Server URL** ayarının `apps/backend`'in production/preview URL'i + `/api/vapi/server`'a yönlendirilmesi ve test aramasıyla doğrulanması
-- [x] Gelen isteklerin gerçekten Vapi'den geldiğini doğrulamak için `VAPI_SERVER_SECRET` (`Authorization: Bearer` header) kontrolünün eklenmesi
-- [ ] Clerk hesabının açılması; `apps/frontend`'e React SDK, `apps/backend`'e backend SDK (JWT doğrulama) entegrasyonu (Hesap/API Key bekleniyor)
-- [ ] Her iki Vercel projesinin de ilk deploy'unun yapılması ("hello world" seviyesinde, production URL'ler çalışır durumda)
+- [x] Neon veritabanı değişkenlerinin (`DATABASEV2_DATABASE_URL` ve `DATABASEV2_DATABASE_URL_UNPOOLED`) tanımlanması (bkz. `DECISIONS.md#adr-009`)
+- [x] Prisma kurulumu ve şemanın (`Clinic`, `Doctor`, `Patient`, `Appointment`, `CallLog` modelleri) yazılması
+- [x] İlk veritabanı migration'ının çalıştırılması (`prisma/migrations/20260927113431_init`)
+- [x] Vapi assistant'ının Server URL ve `VAPI_SERVER_SECRET` doğrulamasıyla bağlanması
 
-## Sıradaki Faz için Ön Hazırlık (henüz aktif değil — Faz 1, bkz. `PLAN.md#faz-1`)
+---
 
-- [ ] Vapi assistant'ı için Türkçe konuşma akışı/prompt taslağının yazılması
-- [ ] `check_availability`, `book_appointment`, `cancel_appointment`, `reschedule_appointment` tool şemalarının (Vapi function/tool tanımları, JSON Schema formatında) tasarlanması
+## Tamamlanan Faz: Faz 1 — Uçtan Uca Randevu Akışı + Sekreter Dashboard'u (bkz. `PLAN.md#faz-1`)
+
+- [x] Veritabanı seed script'inin hazırlanması ve çalıştırılması (`pnpm --filter backend db:seed`) — test kliniği, 3 uzman hekim, örnek hastalar ve randevular
+- [x] Randevu mantığı (`apps/backend/src/lib/scheduling/`):
+  - [x] `availability.ts`: doktor mesai saatleri ve mevcut randevulara göre boş slot hesaplama
+  - [x] `booking.ts`: işlem içi (transaction) çakışma kontrolü ile güvenli randevu kaydı ve hasta eşleştirme
+  - [x] `lookup.ts`: telefon/isim ile randevu sorgulama
+  - [x] `cancellation.ts`: randevu iptali ve yeniden planlama (reschedule)
+- [x] Vapi Tool Handlers (`apps/backend/src/lib/vapi/tools/`):
+  - [x] `check-availability.ts`: Zod validasyonlu müsaitlik sorgusu
+  - [x] `book-appointment.ts`: Zod validasyonlu randevu oluşturma
+  - [x] `lookup-appointment.ts`: Zod validasyonlu randevu bulma
+  - [x] `cancel-appointment.ts`: Zod validasyonlu randevu iptali
+  - [x] `reschedule-appointment.ts`: Zod validasyonlu saat değişikliği
+  - [x] `transfer-call.ts`: sekretere yönlendirme stub'ı
+- [x] Vapi Server URL Dispatcher genişletilmesi (`server-handler.ts`):
+  - [x] Tool çağrılarının (`check_availability`, `book_appointment` vb.) senkron JSON ile yanıtlanması
+  - [x] `end-of-call-report` webhook'u ile `CallLog` kaydının oluşturulması, operasyonel kategori etiketi ve oluşturulan randevu ile bağlantı kurulması
+- [x] Dashboard REST API (`apps/backend/src/routes/`):
+  - [x] `GET /api/appointments`, `GET /api/appointments/:id`, `POST /api/appointments`, `PATCH /api/appointments/:id`
+  - [x] `GET /api/call-logs`, `GET /api/call-logs/:id`
+  - [x] `GET /api/doctors`
+  - [x] `GET /api/stats/dashboard`
+  - [x] Clerk JWT kimlik doğrulama middleware'i (`requireAuth`)
+- [x] Frontend Sekreter Dashboard'u (`apps/frontend/src/pages/dashboard/`):
+  - [x] `SecretaryLayout.tsx`: sol sabit sidebar, navigasyon, klinik bilgisi, çıkış yap aksiyonu
+  - [x] `DashboardPage.tsx`: 4 özet istatistik kartı, gelişmiş tarih/doktor/durum filtreleri, randevu tablosu, manuel randevu ekleme modalı
+  - [x] `CallsPage.tsx`: sesli çağrı geçmişi, kategori rozetleri, konuşma transkripti inceleme modalı
+  - [x] `DoctorsPage.tsx`: doktor kartları, uzmanlık branşları, mesai saatleri ve bugünkü randevu sayıları
+- [x] Uçtan Uca Simülasyon Testi:
+  - [x] Vapi tool çağrısı (`check_availability` -> `book_appointment` -> `end-of-call-report`) simülasyonu
+  - [x] Neon veritabanında atomik randevu ve arama kaydı teyidi
+  - [x] Sekreter dashboard arayüzünde "Vapi AI" kanallı yeni randevunun görsel teyidi
+- [x] Kararların belgelenmesi (`DECISIONS.md#adr-010`)
+
+---
+
+## Aktif Faz: Faz 2 — Gerçek Telefon Hattı & Vapi Talk Entegrasyonu
+
+- [ ] **🔵 ŞU AN ÜZERİNDE ÇALIŞILIYOR:** Vapi Talk üzerinden canlı sesli telefon görüşmesi ile randevu alma senaryosunun denenmesi
+- [ ] Vapi asistanı sistem prompt'unun klinik kurallarına (hekim isimleri, branşlar, iptal kuralları) göre optimize edilmesi
+- [ ] Sekreter panelinde randevu detay düzenleme modalının genişletilmesi
+- [ ] Vercel production ortamında canlı API ve frontend uçtan uca testinin doğrulanması
 
 ---
 
 ### Kullanım Notu
 - Görevler tamamlandıkça `- [ ]` → `- [x]` olarak işaretlenir.
-- Yeni görev keşfedilirse ilgili faz başlığı altına eklenir ve `PLAN.md`'deki faz referansı korunur.
-- "🔵 ŞU AN ÜZERİNDE ÇALIŞILIYOR" etiketi her zaman tek bir göreve verilir; o görev bitince bir sonrakine taşınır.
-- Önemli bir teknik karar bu görevler sırasında alınırsa, `DECISIONS.md`'ye yeni bir ADR olarak eklenir ve buradan referans verilir.
+- "🔵 ŞU AN ÜZERİNDE ÇALIŞILIYOR" etiketi sıradaki görevi gösterir.

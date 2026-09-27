@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Stethoscope, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
@@ -12,7 +12,10 @@ import { Stethoscope, Mail, Lock, Eye, EyeOff } from 'lucide-react';
  * - rounded-lg inputs, rounded-xl buttons
  */
 export default function LoginPage() {
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState('sekreter@recall.health');
+  const [password, setPassword] = useState('••••••••');
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center px-6 py-12">
@@ -37,11 +40,10 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="bg-card rounded-2xl border border-border shadow-sm p-8">
-          {/* Info: This form will be replaced by Clerk's SignIn component */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              // Clerk integration in Faz 0.8
+              navigate('/dashboard');
             }}
           >
             {/* Email */}
@@ -54,6 +56,8 @@ export default function LoginPage() {
                 <input
                   id="login-email"
                   type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="ornek@klinik.com"
                   className="w-full bg-background border border-border rounded-lg py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors duration-200"
                 />
@@ -70,6 +74,8 @@ export default function LoginPage() {
                 <input
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full bg-background border border-border rounded-lg py-2.5 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors duration-200"
                 />
