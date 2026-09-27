@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+/*
+ * RECALL Design System — CSS Custom Properties (HSL tokens)
+ * Source of truth: Recall — Design System.md (project root)
+ *
+ * All color values are HSL without the hsl() wrapper,
+ * allowing Tailwind to add opacity modifiers.
+ */
+
+@theme {
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(220 25% 12%);
+  --color-primary: hsl(218 68% 22%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-accent: hsl(34 72% 50%);
+  --color-accent-foreground: hsl(0 0% 100%);
+  --color-surface: hsl(216 20% 96%);
+  --color-surface-dark: hsl(218 68% 22%);
+  --color-muted: hsl(216 20% 96%);
+  --color-muted-foreground: hsl(220 12% 52%);
+  --color-border: hsl(216 18% 88%);
+  --color-card: hsl(0 0% 100%);
+  --color-destructive: hsl(0 84% 60%);
+  --color-ring: hsl(218 68% 22%);
+
+  --radius-sm: calc(0.5rem - 4px);
+  --radius-md: calc(0.5rem - 2px);
+  --radius-lg: 0.5rem;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+/* --- Base Styles --- */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-weight: 300;
+  color: var(--color-foreground);
+  background-color: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Custom Scrollbar (WebKit) --- */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+}
+
+/* --- Badge / Status Helper Classes --- */
+
+.badge-pending {
+  background-color: theme('colors.amber.50');
+  color: theme('colors.amber.700');
+  border: 1px solid theme('colors.amber.200');
+}
+
+.badge-escalated {
+  background-color: theme('colors.red.50');
+  color: theme('colors.red.700');
+  border: 1px solid theme('colors.red.200');
+}
+
+.badge-completed {
+  background-color: theme('colors.green.50');
+  color: theme('colors.green.700');
+  border: 1px solid theme('colors.green.200');
+}
+
+.badge-active {
+  background-color: theme('colors.blue.50');
+  color: theme('colors.blue.700');
+  border: 1px solid theme('colors.blue.200');
+}

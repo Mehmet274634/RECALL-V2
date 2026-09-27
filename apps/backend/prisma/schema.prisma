@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Clinic {
+  id          String        @id @default(cuid())
+  name        String
+  phoneNumber String        @unique @map("phone_number")
+  timezone    String        @default("Europe/Istanbul")
+  doctors     Doctor[]
+  patients    Patient[]
+  appointments Appointment[]
+  callLogs    CallLog[]
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@map("clinics")
+}
+
+model Doctor {
+  id           String        @id @default(cuid())
+  clinicId     String        @map("clinic_id")
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  name         String
+  specialty    String?
+  workingHours Json?         @map("working_hours")
+  appointments Appointment[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@map("doctors")
+}
+
+model Patient {
+  id          String        @id @default(cuid())
+  clinicId    String        @map("clinic_id")
+  clinic      Clinic        @relation(fields: [clinicId], references: [id])
+  fullName    String        @map("full_name")
+  phoneNumber String        @map("phone_number")
+  appointments Appointment[]
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@unique([clinicId, phoneNumber])
+  @@map("patients")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model Appointment {
+  id               String            @id @default(cuid())
+  clinicId         String            @map("clinic_id")
+  clinic           Clinic            @relation(fields: [clinicId], references: [id])
+  doctorId         String            @map("doctor_id")
+  doctor           Doctor            @relation(fields: [doctorId], references: [id])
+  patientId        String            @map("patient_id")
+  patient          Patient           @relation(fields: [patientId], references: [id])
+  startsAt         DateTime          @map("starts_at")
+  endsAt           DateTime          @map("ends_at")
+  status           AppointmentStatus @default(SCHEDULED)
+  createdViaCallId String?           @map("created_via_call_id")
+  callLog          CallLog?          @relation(fields: [createdViaCallId], references: [id])
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  @@index([doctorId, startsAt, endsAt])
+  @@map("appointments")
+}
+
+model CallLog {
+  id           String        @id @default(cuid())
+  clinicId     String        @map("clinic_id")
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  vapiCallId   String        @unique @map("vapi_call_id")
+  transcript   String?       @db.Text
+  recordingUrl String?       @map("recording_url")
+  summary      String?       @db.Text
+  endedReason  String?       @map("ended_reason")
+  appointments Appointment[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@map("call_logs")
+}

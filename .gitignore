@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+
+# Turbo (if added later)
+.turbo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Prisma - migrations ARE committed (don't ignore them)
+# Only ignore the generated client
+apps/backend/node_modules/.prisma/
