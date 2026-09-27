@@ -51,13 +51,15 @@ app.use('/api/stats', statsRouter);
 app.use('/api/clinic', clinicRouter);
 app.use('/api/admin', adminRouter);
 
-// --- Start Server ---
+// --- Start Server (only when running standalone, not in Vercel serverless) ---
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-  console.log(`[backend] Server running on http://localhost:${PORT}`);
-  console.log(`[backend] Health check: http://localhost:${PORT}/api/health`);
-  console.log(`[backend] Vapi Server URL: http://localhost:${PORT}/api/vapi/server`);
-});
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`[backend] Server running on http://localhost:${PORT}`);
+    console.log(`[backend] Health check: http://localhost:${PORT}/api/health`);
+    console.log(`[backend] Vapi Server URL: http://localhost:${PORT}/api/vapi/server`);
+  });
+}
 
 export default app;
