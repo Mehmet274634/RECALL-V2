@@ -83,8 +83,10 @@ export async function buildSystemPromptDetails(clinicId?: string): Promise<Built
         const end = (wh.end as string) || '17:00';
         const days = Array.isArray(wh.days) ? (wh.days as string[]).join(', ') : 'Hafta içi';
         const specialty = doc.specialty || 'Genel Muayene';
+        const complaints = (wh.complaints as string) || '';
+        const complaintInfo = complaints ? ` (İlgilendiği şikayetler: ${complaints})` : '';
 
-        return `${idx + 1}. ${doc.name} — Branş: ${specialty}
+        return `${idx + 1}. ${doc.name} — Branş: ${specialty}${complaintInfo}
    - Çalışma saatleri: ${days} ${start} - ${end}`;
       })
       .join('\n\n');

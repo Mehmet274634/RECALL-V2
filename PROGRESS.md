@@ -1,7 +1,27 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 2 — Çoklu Klinik Dinamik Sistem Promptu Mimarisi Tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Faz 2 — Çoklu Klinik Onboarding Akışı ve Dashboard Klinik Ayarları Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 2: Çoklu Klinik Onboarding Akışı ve Dashboard Klinik Ayarları
+
+**Ne yapıldı:**
+1. **İnteraktif CLI Onboarding Scripti (`apps/backend/scripts/onboard-clinic.ts`):**
+   - Yeni klinik ekleme sürecini tek ve hatasız bir CLI sihirbazına dönüştürdü (`pnpm --filter backend clinic:onboard`).
+   - Sırasıyla klinik adı, telefon numarası (placeholder desteğiyle), özel karşılama mesajı, iptal politikası saati, özel talimatlar, ses kimliği (`voiceId`) ve döngüsel doktor kadrosunu (isim, branş, çalışma saatleri, ilgilendiği şikayetler) toplayıp Neon PostgreSQL'e kaydeder.
+   - Script sonunda oluşturulan `clinicId`'yi ve Clerk Dashboard'a girilecek hazır JSON metadata'yı (`{ "clinicId": "..." }`) ekrana yazdırır.
+2. **Dashboard'da Klinik Bilgisi Görünürlüğü (Klinik Ayarları):**
+   - Backend'de `GET /api/clinic/current` endpoint'i yazıldı (`apps/backend/src/routes/clinic.ts`), `req.clinicId` bazında kliniğin tüm profilini ve hekim kadrosunu döner.
+   - Frontend'de `SecretaryLayout` menüsüne "Klinik Ayarları" eklendi ve `ClinicSettingsPage.tsx` oluşturuldu.
+   - Sekreter, kliniğin telefon numarasını, karşılama mesajını, iptal politikasını, ses kimliğini, özel klinik talimatlarını ve hekim kadrosunu salt-okunur (read-only) kartlar halinde inceleyebilir.
+3. **Üçüncü Test Kliniği Onboarding Edildi:**
+   - Script ile 3. klinik ("Marmara Fizik Tedavi Merkezi", `+902123330303`, FTR ve Ortopedi branşlarında 2 hekim, 3 saat iptal kuralı, SGK ve MR talimatları) veritabanına eklendi.
+   - `scripts/test-dynamic-prompts.ts` genişletilerek 3 kliniğin (Recall, Anadolu, Marmara) dinamik sistem promptları eşzamanlı test edildi; tam izolasyon ve sıfır veri sızıntısı doğrulandı.
+4. **Dokümantasyon:**
+   - Standart operasyon rehberi olarak `ONBOARDING.md` oluşturuldu.
+   - `ADR-017` `DECISIONS.md` dosyasına eklendi.
 
 ---
 

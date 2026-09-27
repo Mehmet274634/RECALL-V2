@@ -6,6 +6,7 @@ import SecretaryLayout from './components/layout/SecretaryLayout';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import CallsPage from './pages/dashboard/CallsPage';
 import DoctorsPage from './pages/dashboard/DoctorsPage';
+import ClinicSettingsPage from './pages/dashboard/ClinicSettingsPage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route index element={<DashboardPage />} />
         <Route path="calls" element={<CallsPage />} />
         <Route path="doctors" element={<DoctorsPage />} />
+        <Route path="settings" element={<ClinicSettingsPage />} />
         {/* Redirect unknown dashboard sub-routes */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

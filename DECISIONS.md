@@ -486,6 +486,39 @@ Hedef: Tek bir merkezi Vapi asistanı üzerinden, gelen çağrının hedef telef
 
 ---
 
+## ADR-017: Çoklu Klinik (Multi-Tenant) Onboarding Akışı ve Klinik Ayarları Görünümü
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+ADR-014'te belgelendiği üzere, multi-tenant izolasyon kuralları gereği her kullanıcının `public_metadata.clinicId` alanına sahip olması zorunludur. Ancak yeni bir klinik ve hekim kadrosunu veritabanına eklemek, özel karşılama metinlerini ve iptal saatlerini girmek, ardından Clerk Dashboard üzerinde kullanıcı açıp doğru `clinicId` değerini atamak elle yapıldığında dağınık ve insan hatasına (IDOR/yetkisiz erişim riski veya 403 Forbidden kilitlenmesi) açıktı.
+Ayrıca, sisteme dahil olan bir klinik sekreteri kendi kliniğinin santral numarasını, karşılama cümlesini, iptal politikasını ve hekim mesai kurallarını panelde göremiyordu.
+
+**Karar:**
+1. **İnteraktif CLI Onboarding Sihirbazı (`apps/backend/scripts/onboard-clinic.ts`):**
+   - Sırasıyla klinik adı, telefon numarası (Netgsm öncesi geçici/placeholder desteğiyle), sesli karşılama metni, iptal politikası saati, özel talimatlar, Vapi ses kimliği (`voiceId`) ve döngüsel hekim kadrosunu (isim, branş, ilgilendiği şikayetler, mesai saatleri) soran interaktif bir CLI script yazıldı.
+   - Script, klinik ve hekim kayıtlarını tek bir Prisma işlemiyle Neon PostgreSQL'e kaydeder.
+   - Script sonunda oluşturulan `clinicId`'yi ve Clerk kullanıcısı oluştururken doğrudan kopyalanıp yapıştırılacak hazır JSON metadata snippet'ını (`{ "clinicId": "cm..." }`) ekrana yazdırır.
+2. **Klinik Ayarları Salt-Okunur Görünümü (`GET /api/clinic/current` & `ClinicSettingsPage.tsx`):**
+   - Backend'e sekreterin `req.clinicId` kimliğine göre kliniğin tüm profilini ve hekim listesini dönen güvenli bir endpoint eklendi.
+   - Frontend'de `SecretaryLayout` menüsüne "Klinik Ayarları" sayfası eklendi. Sekreter bu sayfada kliniğin yapay zeka asistanı ayarlarını (karşılama şablonu, iptal kuralı, ses sağlayıcısı, özel talimatlar) ve hekim listesini salt-okunur (read-only) kartlar halinde inceleyebilir.
+3. **Standart Operasyon Dokümantasyonu (`ONBOARDING.md`):**
+   - Yeni klinik eklerken izlenecek adım adım operasyonel talimatlar (`ONBOARDING.md`) hazırlandı.
+4. **Çoklu Klinik Test Doğrulaması:**
+   - Script ile 3. test kliniği ("Marmara Fizik Tedavi Merkezi" ve 2 hekimi) oluşturuldu.
+   - `test-dynamic-prompts.ts` genişletilerek 3 kliniğin aynı anda izole çalıştığı, hekim/branş sızıntısı olmadığı ve kuralların hatasız prompta dönüştüğü doğrulandı.
+
+**Alternatifler:**
+- *Clerk Backend API ile otomatik kullanıcı oluşturma:* Sekreterlerin e-posta daveti, şifre belirleme ve 2FA süreçleri Clerk'in kendi güvenli davet/onay akışında yürütülmesi gerektiğinden, geçici olarak CLI + hazır JSON metadata kopyalama süreci operasyonel olarak en esnek ve güvenli yaklaşım olarak belirlendi.
+
+**Sonuçlar:**
+- (+) Yeni bir klinik sisteme 1 dakikadan kısa sürede, hatasız ve standart şekilde kaydedilebilir hale geldi.
+- (+) Sekreterler kliniğin sistemdeki tanımını ve kurallarını dashboard üzerinden şeffafça görebilir.
+- (+) Test edilmiş 3 aktif klinik (Recall, Anadolu, Marmara) ile sistemin tam ölçeklenebilir SaaS niteliği kanıtlandı.
+
+---
+
 <!--
 YENİ ADR EKLEME ŞABLONU:
 

@@ -115,8 +115,28 @@ export interface DashboardStats {
   totalPatients: number;
 }
 
+export interface ClinicDetails {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  timezone: string;
+  greetingMessage?: string | null;
+  specialInstructions?: string | null;
+  cancellationPolicyHours: number;
+  voiceId?: string | null;
+  createdAt: string;
+  counts: {
+    doctors: number;
+    patients: number;
+    appointments: number;
+    callLogs: number;
+  };
+}
+
 export const api = {
   getStats: () => request<{ stats: DashboardStats }>('/api/stats/dashboard'),
+
+  getClinic: () => request<{ clinic: ClinicDetails }>('/api/clinic/current'),
 
   getAppointments: (params?: { doctorId?: string; date?: string; status?: string }) => {
     const query = new URLSearchParams();

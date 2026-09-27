@@ -7,12 +7,14 @@ import {
   LogOut,
   ExternalLink,
   ShieldCheck,
+  Settings,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', label: 'Randevular', icon: Calendar },
   { to: '/dashboard/calls', label: 'Çağrı Kayıtları', icon: Phone },
   { to: '/dashboard/doctors', label: 'Doktorlar', icon: Users },
+  { to: '/dashboard/settings', label: 'Klinik Ayarları', icon: Settings },
 ];
 
 export default function SecretaryLayout() {
