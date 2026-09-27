@@ -10,6 +10,7 @@ import {
   handleRescheduleAppointment,
   handleTransferCall,
 } from './tools/index.js';
+import { RECALL_SYSTEM_PROMPT } from './system-prompt.js';
 
 /**
  * Central dispatcher for all Vapi Server URL messages (ADR-006).
@@ -39,8 +40,19 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
       break;
 
     case 'assistant-request':
-      console.log('[vapi] assistant-request received — returning default assistant config');
-      res.status(200).json({});
+      console.log('[vapi] assistant-request received — returning dynamic assistant configuration with updated prompt');
+      res.status(200).json({
+        assistant: {
+          model: {
+            messages: [
+              {
+                role: 'system',
+                content: RECALL_SYSTEM_PROMPT,
+              },
+            ],
+          },
+        },
+      });
       break;
 
     case 'transfer-destination-request':

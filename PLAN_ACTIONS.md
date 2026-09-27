@@ -62,8 +62,8 @@
 
 ## Aktif Faz: Faz 2 — Gerçek Telefon Hattı & Vapi Talk Entegrasyonu
 
+- [x] Vapi asistanı sistem prompt'unun klinik kurallarına (hekim isimleri, branşlar, iptal kuralları, acil durum 112 yönlendirmesi) göre optimize edilmesi (`apps/backend/src/lib/vapi/system-prompt.ts`)
 - [ ] **🔵 ŞU AN ÜZERİNDE ÇALIŞILIYOR:** Vapi Talk üzerinden canlı sesli telefon görüşmesi ile randevu alma senaryosunun denenmesi
-- [ ] Vapi asistanı sistem prompt'unun klinik kurallarına (hekim isimleri, branşlar, iptal kuralları) göre optimize edilmesi
 - [ ] Sekreter panelinde randevu detay düzenleme modalının genişletilmesi
 - [ ] Vercel production ortamında canlı API ve frontend uçtan uca testinin doğrulanması
 

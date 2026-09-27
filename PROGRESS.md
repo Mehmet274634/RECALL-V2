@@ -1,7 +1,27 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (clinicId Onboarding Boşluğu Belgelendi & Frontend 403 Görünür Hata Uyarısı Eklendi)
+> **Son güncelleme:** 2026-09-27 (Faz 2 — Vapi Sistem Prompt Optimizasyonu & 112 Acil Güvenlik Triage Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 2: Vapi Sistem Prompt Optimizasyonu, Klinik Triage & 112 Acil Yönlendirmesi
+
+**Ne yapıldı:**
+1. **Merkezi Sistem Prompt Dosyası:**
+   - `apps/backend/src/lib/vapi/system-prompt.ts` oluşturuldu; Vapi asistanının kişiliği, kuralları ve konuşma akışları tek bir yerde toplandı.
+   - `apps/backend/src/lib/vapi/server-handler.ts` içerisindeki `assistant-request` webhook handler'ı güncellenerek gelen konfigürasyon isteklerine dinamik olarak güncel sistem promptunun dönmesi sağlandı.
+2. **Kritik Acil Durum Triage (112 Güvenlik Protokolü):**
+   - Göğüs ağrısı, nefes darlığı, inme, ani bilinç kaybı ve şiddetli kanama gibi hayati tehlike içeren durumlarda asistanın randevu akışını anında durdurması ve hastayı derhal 112 Acil Çağrı Merkezi'ne yönlendirmesi en yüksek öncelikle kurala bağlandı.
+3. **Klinik Kadrosu ve Çalışma Saatleri Entegrasyonu:**
+   - 3 hekimin mesai saatleri (Ahmet Yılmaz: 09:00-17:00 Dahiliye, Zeynep Kaya: 09:00-16:00 Kardiyoloji, Mehmet Demir: 10:00-18:00 KBB) ve 30 dakikalık muayene slotları asistana tanıtıldı.
+   - Randevudan en az 2 saat önce iptal/erteleme kuralı eklendi.
+   - Kliniğin kapsamı dışındaki branşlar (Diş vb.) için açık fallback ve sekretere aktarma kuralı tanımlandı.
+4. **Türkçe Doğallık & Etik Şeffaflık:**
+   - Yapay zeka olduğunu dürüstçe açıklama, klinik ismini her cümlede tekrarlamama, saatleri Türkçe konuşma diline uygun söyleme ve dolu saatlerde yardımsever alternatifler sunma kuralları uygulandı.
+5. **Belgeleme:**
+   - `ADR-015` [DECISIONS.md](file:///c:/Users/ev/Desktop/RECALL%20V2/DECISIONS.md) dosyasına eklendi.
+   - `PLAN_ACTIONS.md` güncellendi.
 
 ---
 

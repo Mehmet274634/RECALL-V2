@@ -413,6 +413,42 @@ Clerk üzerinde yeni bir sekreter/kullanıcı hesabı açıldığında, eğer ku
 
 ---
 
+## ADR-015: Vapi Asistanı Sistem Promptu Optimizasyonu, Klinik Triage ve 112 Acil Güvenlik Yönlendirmesi
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+Faz 1'de Vapi asistanı ("Recall Klinik Sekreteri") backend tool-calling (`check_availability`, `book_appointment`, `lookup_appointment`, `cancel_appointment`, `reschedule_appointment`, `transfer_call`) işlevlerini başarıyla yürütebilir hale getirildi. Ancak canlı telefon görüşmelerine geçmeden önce asistanın klinik kurallarına tam uyumu, acil durum yönetimi, Türkçe doğallığı ve etik/şeffaflık ilkeleri eksik tanımlanmıştı:
+1. **Acil Durum Eksikliği (Kritik Risk):** Hasta göğüs ağrısı, inme veya nefes darlığı gibi hayati bir şikayetle aradığında asistanın tıbbi triage yapmadan normal poliklinik randevusu oluşturmaya çalışması hayati risk taşır.
+2. **Klinik ve Hekim Bilgisi:** Hekimlerin uzmanlık branşları (Dahiliye, Kardiyoloji, KBB), 30 dakikalık standart slot süresi ve randevudan en az 2 saat önce iptal kuralı asistana bildirilmemişti.
+3. **Branş Fallback Eksikliği:** Kliniğin kadrosunda olmayan bir branş (örneğin Diş, Göz) sorulduğunda asistanın hastayı yanlış yönlendirmesi riski mevcuttu.
+4. **Türkçe Doğallık ve Şeffaflık:** Yapay zeka olduğunu dürüstçe açıklama, klinik adını papağan gibi tekrarlamama ve saatleri konuşma dilinde telaffuz etme gerekliliği vardı.
+
+**Karar:**
+1. **Merkezi Sistem Prompt Dosyası:**
+   - Prompt tanımı kod tabanında versiyonlanacak şekilde `apps/backend/src/lib/vapi/system-prompt.ts` içine alındı ve backend'deki `assistant-request` dinamik webhook'una bağlandı.
+2. **Kritik Güvenlik & Acil Triage (112):**
+   - Promptun en üstüne en yüksek öncelikle "Acil Durum Kuralı" konuldu. Göğüs ağrısı, nefes darlığı, inme, ani şuur kaybı gibi semptomlarda asistan randevu akışını anında durdurur ve arayanı 112 Acil Çağrı Merkezi'ne ve en yakın acil servise yönlendirir.
+3. **Klinik Kadrosu ve Kuralları:**
+   - 3 hekim (Dr. Ahmet Yılmaz / Dahiliye 09:00-17:00, Dr. Zeynep Kaya / Kardiyoloji 09:00-16:00, Dr. Mehmet Demir / KBB 10:00-18:00) mesai saatleri ve tipik semptom eşleştirmeleriyle tanımlandı.
+   - Randevu süresinin 30 dakika olduğu ve iptal/erteleme işlemlerinin randevudan en az 2 saat önce yapılması kuralı eklendi.
+   - Olmayan branşlar için (Diş vb.) açık "hizmet verilemiyor, sekretere aktarma opsiyonu" eklendi.
+4. **Şeffaflık ve Doğal Dil:**
+   - İnsan olup olmadığı sorulduğunda dürüstçe yapay zeka olduğunu belirten ve istenirse sekretere aktarabileceğini söyleyen KVKK ve etik uyumlu talimat eklendi.
+   - Robotik dil yerine samimi, profesyonel Türkçe diyalog kalıpları kurala bağlandı.
+
+**Alternatifler:**
+- *Promptu sadece Vapi Dashboard'da tutup kod tabanına almamak:* Versiyon kontrolü ve test otomasyonunda şeffaflığı bozar; promptun repoda kod olarak bulunması tercih edildi.
+- *Acil durum kontrolünü sadece LLM'e bırakmayıp tool seviyesinde regex kontrolü yapmak:* Sesli aramada hasta şikayetini serbest dille ifade ettiği için LLM prompt yönlendirmesi en hızlı ve etkili korumadır; ileride sentiment/keyword guardrail ile desteklenebilir.
+
+**Sonuçlar:**
+- (+) Tıbbi aciliyetlerde hayat kurtarıcı 112 yönlendirmesi garantiye alındı.
+- (+) Hasta semptom söylediğinde doğru doktora yönlendirme otomatikleşti.
+- (+) Vapi Talk canlı sesli testi için hazır, klinik kurallarına tam uyumlu bir prompt elde edildi.
+
+---
+
 <!--
 YENİ ADR EKLEME ŞABLONU:
 
