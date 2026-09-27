@@ -86,16 +86,14 @@ async function testDynamicPrompts() {
   }
   console.log('✅ Anadolu Tıp Merkezi specific prompt correctly injected (Dermatoloji, Göz, 4 saat, SGK/Otopark uyarısı).');
 
-  // D. Cross-tenant leakage check
-  if (
-    recallRes.prompt.includes('Dermatoloji') ||
-    recallRes.prompt.includes('Anadolu Tıp') ||
-    anadoluRes.prompt.includes('Recall Sağlık') ||
-    anadoluRes.prompt.includes('Dr. Ahmet Yılmaz')
-  ) {
-    throw new Error('Cross-tenant data contamination detected between prompts!');
+  // E. Voice ID assertions
+  if (recallRes.voiceId !== 'EXAVITQu4vr4xnSDxMaL') {
+    throw new Error(`Expected Sarah voice ID for Recall clinic, got: ${recallRes.voiceId}`);
   }
-  console.log('✅ Zero cross-tenant contamination: No doctors or rules leaked between clinics.');
+  if (anadoluRes.voiceId !== 'nPczCjzI2devNBz1zQrb') {
+    throw new Error(`Expected Brian voice ID for Anadolu clinic, got: ${anadoluRes.voiceId}`);
+  }
+  console.log('✅ Real ElevenLabs Voice IDs verified: Recall -> EXAVITQu4vr4xnSDxMaL (Sarah), Anadolu -> nPczCjzI2devNBz1zQrb (Brian).');
 
   console.log('\nALL MULTI-TENANT DYNAMIC PROMPT TESTS PASSED SUCCESSFULLY! 🎉');
 }

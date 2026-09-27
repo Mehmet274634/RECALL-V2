@@ -163,6 +163,7 @@ async function handleAssistantRequest(body: Record<string, unknown>, res: Respon
     if (voiceId) {
       assistantConfig.voice = {
         provider: '11labs',
+        model: 'eleven_multilingual_v2',
         voiceId,
       };
     }

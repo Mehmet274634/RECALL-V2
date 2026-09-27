@@ -18,7 +18,7 @@ async function main() {
         cancellationPolicyHours: 2,
         specialInstructions:
           'Kliniğimize gelirken TC Kimlik kartınızı ve varsa önceki tahlil sonuçlarınızı yanınızda bulundurunuz. Özel sağlık sigortası anlaşmalarımız geçerlidir.',
-        voiceId: 'eleven_turkish_female_1',
+        voiceId: 'EXAVITQu4vr4xnSDxMaL', // ElevenLabs "Sarah" - Doğal, profesyonel kadın sesi (Türkçe multilingual destekli)
       },
     });
     console.log('Recall Clinic updated with prompt fields.');
@@ -34,7 +34,7 @@ async function main() {
       cancellationPolicyHours: 4,
       specialInstructions:
         'SGK ve tamamlayıcı sigorta geçerlidir. Randevunuza 15 dakika önce gelmeniz rica olunur. Otoparkımız mevcuttur.',
-      voiceId: 'eleven_turkish_male_1',
+      voiceId: 'nPczCjzI2devNBz1zQrb', // ElevenLabs "Brian" - Güven veren, net erkek sesi (Türkçe multilingual destekli)
     },
     create: {
       name: 'Anadolu Tıp Merkezi',
@@ -45,7 +45,7 @@ async function main() {
       cancellationPolicyHours: 4,
       specialInstructions:
         'SGK ve tamamlayıcı sigorta geçerlidir. Randevunuza 15 dakika önce gelmeniz rica olunur. Otoparkımız mevcuttur.',
-      voiceId: 'eleven_turkish_male_1',
+      voiceId: 'nPczCjzI2devNBz1zQrb', // ElevenLabs "Brian"
     },
   });
   console.log('Second clinic ready:', clinic2.name, clinic2.id);

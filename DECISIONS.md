@@ -482,6 +482,7 @@ Hedef: Tek bir merkezi Vapi asistanı üzerinden, gelen çağrının hedef telef
 - (+) Tek bir Vapi asistanı sonsuz sayıda kliniğe hizmet verebilir.
 - (+) Sıfır veri sızıntısı: İki farklı klinik arasında hekim, branş veya kural sızıntısı yaşanmadığı otomatik testlerle doğrulandı.
 - (+) Hekim mesai saatleri veya klinik kuralları veritabanında güncellendiği anda bir sonraki çağrıda prompt anında güncel halini alır; hiçbir deploy veya manuel ayar gerekmez.
+- (+) **Gerçek ElevenLabs Voice ID Standartları:** Test/seed verisindeki placeholder `eleven_turkish_*` kimlikleri, ElevenLabs'ın gerçek Türkçe destekli ses kimlikleriyle güncellendi (`EXAVITQu4vr4xnSDxMaL` / Sarah kadın sesi, `nPczCjzI2devNBz1zQrb` / Brian erkek sesi). Vapi `assistant-request` payload'ında `{ provider: "11labs", model: "eleven_multilingual_v2", voiceId: "..." }` formatı benimsendi. Vapi'de geçersiz bir voiceId verildiğinde çağrının `voice-not-found` ile kesileceği belgelendi; bu nedenle `voiceId` boş ise Vapi'nin varsayılan sesinin devrede kalması sağlandı.
 
 ---
 
