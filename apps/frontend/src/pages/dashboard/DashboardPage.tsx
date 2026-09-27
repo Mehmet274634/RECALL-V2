@@ -11,6 +11,7 @@ import {
   Check,
   X,
   AlertCircle,
+  CalendarClock,
 } from 'lucide-react';
 
 import { api, ApiError, type Appointment, type Doctor, type DashboardStats } from '../../lib/api';
@@ -40,6 +41,15 @@ export default function DashboardPage() {
   const [newTime, setNewTime] = useState('10:00');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Reschedule Modal State
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null);
+  const [rescheduleDoctorId, setRescheduleDoctorId] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('10:00');
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -123,6 +133,50 @@ export default function DashboardPage() {
       }
     } finally {
       setCreateSubmitting(false);
+    }
+  };
+
+  const openRescheduleModal = (appt: Appointment) => {
+    setRescheduleAppt(appt);
+    setRescheduleDoctorId(appt.doctorId);
+    const starts = new Date(appt.startsAt);
+    const yyyy = starts.getFullYear();
+    const mm = String(starts.getMonth() + 1).padStart(2, '0');
+    const dd = String(starts.getDate()).padStart(2, '0');
+    setRescheduleDate(`${yyyy}-${mm}-${dd}`);
+    const hh = String(starts.getHours()).padStart(2, '0');
+    const min = String(starts.getMinutes()).padStart(2, '0');
+    setRescheduleTime(`${hh}:${min}`);
+    setRescheduleError(null);
+    setRescheduleModalOpen(true);
+  };
+
+  const handleRescheduleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rescheduleAppt) return;
+    setRescheduleSubmitting(true);
+    setRescheduleError(null);
+
+    try {
+      const startsAt = `${rescheduleDate}T${rescheduleTime}:00`;
+      await api.updateAppointment(rescheduleAppt.id, {
+        doctorId: rescheduleDoctorId,
+        startsAt,
+      });
+
+      setRescheduleModalOpen(false);
+      setRescheduleAppt(null);
+      await loadData();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 409) {
+        setRescheduleError('Bu saatte doktorun başka bir randevusu var, lütfen farklı bir saat seçin.');
+      } else if (err instanceof Error) {
+        setRescheduleError(err.message);
+      } else {
+        setRescheduleError('Randevu güncellenemedi.');
+      }
+    } finally {
+      setRescheduleSubmitting(false);
     }
   };
 
@@ -424,6 +478,13 @@ export default function DashboardPage() {
                         {appt.status === 'SCHEDULED' && (
                           <div className="flex items-center justify-end gap-1.5">
                             <button
+                              onClick={() => openRescheduleModal(appt)}
+                              title="Randevuyu yeniden planla"
+                              className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <CalendarClock className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => handleStatusUpdate(appt.id, 'COMPLETED')}
                               title="Tamamlandı olarak işaretle"
                               className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
@@ -562,6 +623,115 @@ export default function DashboardPage() {
                   className="bg-primary text-primary-foreground px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 >
                   {createSubmitting ? 'Kaydediliyor...' : 'Randevuyu Onayla'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Appointment Modal */}
+      {rescheduleModalOpen && rescheduleAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl p-6 relative">
+            <button
+              onClick={() => setRescheduleModalOpen(false)}
+              className="absolute right-5 top-5 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center">
+                <CalendarClock className="w-4 h-4 text-primary" />
+              </div>
+              <h2 className="text-xl font-bold text-foreground">Randevuyu Yeniden Planla</h2>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              Randevu saatini veya hekimini güncelleyin
+            </p>
+
+            {/* Readonly current appointment details */}
+            <div className="bg-surface rounded-xl p-3.5 mb-4 border border-border/80 flex flex-col gap-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-medium">Hasta:</span>
+                <span className="font-semibold text-foreground">{rescheduleAppt.patient.fullName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-medium">Telefon:</span>
+                <span className="font-mono text-foreground">{rescheduleAppt.patient.phoneNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-medium">Mevcut Randevu:</span>
+                <span className="font-semibold text-primary">
+                  {new Date(rescheduleAppt.startsAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(rescheduleAppt.startsAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} ({rescheduleAppt.doctor.name})
+                </span>
+              </div>
+            </div>
+
+            {rescheduleError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 text-xs font-medium border border-red-200 dark:border-red-800">
+                {rescheduleError}
+              </div>
+            )}
+
+            <form onSubmit={handleRescheduleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">
+                  Doktor Değiştir / Seç
+                </label>
+                <select
+                  required
+                  value={rescheduleDoctorId}
+                  onChange={(e) => setRescheduleDoctorId(e.target.value)}
+                  disabled={doctors.length === 0}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-60"
+                >
+                  {doctors.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.name} {doc.specialty ? `— ${doc.specialty}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Yeni Tarih</label>
+                  <input
+                    type="date"
+                    required
+                    value={rescheduleDate}
+                    onChange={(e) => setRescheduleDate(e.target.value)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Yeni Saat</label>
+                  <input
+                    type="time"
+                    required
+                    value={rescheduleTime}
+                    onChange={(e) => setRescheduleTime(e.target.value)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:bg-surface"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  disabled={rescheduleSubmitting}
+                  className="bg-primary text-primary-foreground px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                >
+                  {rescheduleSubmitting ? 'Güncelleniyor...' : 'Yeni Saati Kaydet'}
                 </button>
               </div>
             </form>
