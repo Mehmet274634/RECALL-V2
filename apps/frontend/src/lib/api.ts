@@ -4,6 +4,7 @@
  */
 
 import { getUserRole } from './auth';
+import { captureFrontendException } from './sentry';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
@@ -45,27 +46,54 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const authHeader = await getAuthHeader();
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeader,
-      ...options.headers,
-    },
-  });
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader,
+        ...options.headers,
+      },
+    });
 
-  if (!res.ok) {
-    let errorMsg = `HTTP Error: ${res.status}`;
-    try {
-      const data = await res.json();
-      if (data?.error) errorMsg = data.error;
-    } catch {
-      // ignore
+    if (!res.ok) {
+      let errorMsg = `HTTP Error: ${res.status}`;
+      try {
+        const data = await res.json();
+        if (data?.error) errorMsg = data.error;
+      } catch {
+        // ignore
+      }
+
+      const apiError = new ApiError(errorMsg, res.status);
+
+      // Report 5xx server errors to Sentry
+      if (res.status >= 500) {
+        captureFrontendException(apiError, {
+          endpoint,
+          status: res.status,
+          method: options.method || 'GET',
+        });
+      }
+
+      throw apiError;
     }
-    throw new ApiError(errorMsg, res.status);
-  }
 
-  return res.json();
+    return res.json();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    // Network errors (Failed to fetch, connectivity failures, etc.)
+    captureFrontendException(error, {
+      endpoint,
+      method: options.method || 'GET',
+      type: 'NetworkError',
+    });
+
+    throw error;
+  }
 }
 
 export interface Doctor {

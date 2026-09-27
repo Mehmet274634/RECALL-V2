@@ -1,7 +1,9 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 
+import { initBackendSentry, captureBackendException } from './lib/logging/sentry.js';
 import { vapiRouter } from './routes/vapi/server.js';
 import { healthRouter } from './routes/health.js';
 import { appointmentsRouter } from './routes/appointments.js';
@@ -10,6 +12,9 @@ import { doctorsRouter } from './routes/doctors.js';
 import { statsRouter } from './routes/stats.js';
 import { clinicRouter } from './routes/clinic.js';
 import { adminRouter } from './routes/admin.js';
+
+// --- Initialize Sentry before all imports/express app setup ---
+initBackendSentry();
 
 const app = express();
 
@@ -41,6 +46,16 @@ app.use(
 // --- Body Parsing ---
 app.use(express.json());
 
+// --- Sentry Debug Test Endpoint ---
+app.get('/api/debug/sentry-test', (_req, _res) => {
+  const testError = new Error('RECALL Sentry Backend Verification Test Error');
+  captureBackendException(testError, {
+    testContext: 'Verification test from /api/debug/sentry-test',
+    patientPhone: '+905321112233', // will be scrubbed by KVKK filter
+  });
+  throw testError;
+});
+
 // --- Route Mounts ---
 app.use('/api/health', healthRouter);
 app.use('/api/vapi/server', vapiRouter);
@@ -50,6 +65,20 @@ app.use('/api/doctors', doctorsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/clinic', clinicRouter);
 app.use('/api/admin', adminRouter);
+
+// --- Sentry Error Handling Middleware ---
+Sentry.setupExpressErrorHandler(app);
+
+// --- Global Fallback Error Handler ---
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[server:error]', err);
+  const status =
+    typeof (err as { status?: number })?.status === 'number'
+      ? (err as { status?: number }).status
+      : 500;
+  const message = err instanceof Error ? err.message : 'Sunucu içi beklenmeyen bir hata oluştu.';
+  res.status(status || 500).json({ error: message });
+});
 
 // --- Start Server (only when running standalone, not in Vercel serverless) ---
 const PORT = process.env.PORT || 3001;

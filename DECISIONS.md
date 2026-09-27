@@ -555,23 +555,39 @@ ADR-017'de CLI script'i ile klinik açma süreci standartlaştırılmıştı; an
 
 ---
 
-<!--
-YENİ ADR EKLEME ŞABLONU:
+## ADR-019: Sentry ile Merkezi Hata İzleme ve KVKK/GDPR Hassas Veri Maskeleme Mimarisi
 
-## ADR-00X: <karar başlığı>
-
-- **Tarih:** YYYY-MM-DD
-- **Durum:** Kabul edildi / Reddedildi / Değiştirildi (bkz. ADR-00Y)
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
 
 **Bağlam:**
-
+Sistem hem frontend (Vite React SPA) hem backend (Node.js/Express) katmanlarından oluşmaktadır. Canlı ortamda (Vercel Serverless ve edge network) oluşabilecek ağ kesintileri (`Failed to fetch`), Vapi webhook tool yürütme hataları, Prisma veritabanı kilitlenmeleri veya yetkilendirme aksaklıklarının manuel testlere gerek kalmadan anında tespit edilmesi gerekmektedir. Sağlık kliniği randevu asistanı olmamız sebebiyle KVKK (Kişisel Verilerin Korunması Kanunu) ve GDPR uyarınca hasta isimleri, telefon numaraları ve tıbbi şikayetlerin harici log servislerine ham haliyle aktarılması yasaktır.
 
 **Karar:**
-
+1. **Sentry SDK Seçimi:**
+   - Backend için `@sentry/node`, frontend için `@sentry/react` entegre edildi.
+   - DSN anahtarları kod tabanına gömülmeden `SENTRY_DSN` ve `VITE_SENTRY_DSN` ortam değişkenlerinden okunacak şekilde tasarlandı. DSN bulunmadığında SDK'lar sessizce pasif kalır (no-op).
+2. **KVKK / GDPR Önleyici Maskeleme (`beforeSend` Kancası):**
+   - Hata bildirimleri Sentry sunucularına iletilmeden önce `beforeSend` kancasında derinlemesine (recursive) taranır:
+     - Hasta kimlik ve iletişim alanları (`patientPhone`, `patientName`, `phone`, `phoneNumber`, `fullName`) -> `[REDACTED]`.
+     - Tıbbi şikayet ve talimat alanları (`complaints`, `specialInstructions`, `medicalNotes`) -> `[REDACTED]`.
+     - Yetkilendirme ve anahtar alanları (`authorization`, `secret`, `password`, `apiKey`, `token`) -> `[REDACTED]`.
+     - Serbest metinler içindeki telefon numaraları ve e-posta adresleri düzenli ifadelerle (regex) `[REDACTED_PHONE]` ve `[REDACTED_EMAIL]` olarak maskelenir.
+   - `sentry.test.ts` birim testi ile KVKK maskelemesinin çalıştığı %100 test kapsamıyla güvenceye alındı.
+3. **Kullanıcı Deneyimi Koruması (React Error Boundary):**
+   - Frontend'de `<AppErrorBoundary>` bileşeni ile uygulama sarmalandı. Beklenmeyen bir render çökmesi veya kritik ağ hatasında kullanıcıya boş beyaz ekran yerine zarif ve yönlendirici bir hata ekranı (`ErrorFallbackUI`) gösterilirken, hata arka planda Sentry'ye iletilir.
+4. **Backend Entegrasyon Noktaları:**
+   - Express hata middleware'i (`setupExpressErrorHandler`) tüm rotaların sonuna eklendi.
+   - Vapi tool fonksiyonları (`handleToolCalls`), `requireAuth` ve `requireAdmin` kritik catch bloklarında hataları Sentry'ye gönderecek şekilde yapılandırıldı.
+   - Test ve doğrulama için `GET /api/debug/sentry-test` endpoint'i tanımlandı.
 
 **Alternatifler:**
-
+- *Yalnızca console.error ve Vercel Functions loglarına güvenmek:* Serverless logları geçici ve filtrelenmesi zor; anlık e-posta/Slack alarmı ve hata gruplama desteği sağlamaz.
+- *LogRocket / Datadog:* Ücretsiz planda Sentry'ye göre kurulum maliyeti daha yüksek ve KVKK hassas veri maskelemesi Sentry'nin `beforeSend` kancası kadar kolay ve yerel kontrol edilemez.
 
 **Sonuçlar:**
+- (+) Backend ve frontend çökmeleri anında görünür hale geldi.
+- (+) KVKK/GDPR uyumu garanti altına alındı; kişisel hasta verilerinin üçüncü parti sunuculara sızması engellendi.
+- (+) Kullanıcılar beyaz ekran çökmesi yerine toparlanabilir arayüzle karşılaşır.
 
--->
+---

@@ -1,7 +1,35 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 4 — Admin Paneli ve Otomatik Sekreter Davet Akışı Tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Hata İzleme — Sentry Entegrasyonu ve KVKK Maskelemesi Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Hata İzleme: Sentry Entegrasyonu ve KVKK Hassas Veri Maskelemesi
+
+**Ne yapıldı:**
+1. **Backend Entegrasyonu (`@sentry/node`):**
+   - `apps/backend/src/lib/logging/sentry.ts` modülü oluşturuldu.
+   - `src/index.ts` dosyasında Sentry tüm Express middleware ve route'larından önce initialize edildi (`initBackendSentry()`).
+   - Express hata yakalama middleware'i `Sentry.setupExpressErrorHandler(app)` tüm route'ların sonuna bağlandı.
+   - Vapi tool handler'ları (`handleToolCalls`), `requireAuth` ve `requireAdmin` beklenmeyen hataları Sentry'ye gönderecek şekilde try/catch ile sarıldı.
+   - Sentry bağlantısını ve hata yakalamasını test etmek için `GET /api/debug/sentry-test` endpoint'i eklendi.
+2. **Frontend Entegrasyonu (`@sentry/react`):**
+   - `apps/frontend/src/lib/sentry.tsx` modülü oluşturuldu.
+   - `main.tsx` içinde React render edilmeden önce Sentry başlatıldı (`initFrontendSentry()`).
+   - Tüm uygulamayı kapsayan `<AppErrorBoundary>` bileşeni eklendi; beklenmeyen istemci çökmelerinde beyaz ekran yerine nazik, RECALL tasarım diline uygun bir hata ekranı (`ErrorFallbackUI`) gösterilir ve hata Sentry'ye iletilir.
+   - `apps/frontend/src/lib/api.ts` istemcisine merkezi hata yakalama eklendi; 5xx sunucu hataları ve ağ kopmaları (Failed to fetch) Sentry'ye otomatik raporlanır.
+3. **KVKK / GDPR Hassas Veri Maskelemesi (Öncelikli Güvenlik):**
+   - Hem backend hem frontend için `beforeSend` kancaları (hooks) yazıldı.
+   - Hasta telefon numarası (`patientPhone`, `phone`), adı soyadı (`patientName`, `fullName`), şikayetler (`complaints`, `medicalNotes`), yetkilendirme başlıkları (`authorization`) gibi PII alanları `[REDACTED]` ile maskelendi.
+   - Serbest metinler içerisindeki telefon numaraları (`[REDACTED_PHONE]`) ve e-posta adresleri (`[REDACTED_EMAIL]`) regex ile temizlendi.
+   - `apps/backend/src/lib/logging/sentry.test.ts` ile KVKK maskelemesinin doğruluğu birim testlerle kanıtlandı.
+4. **Ortam Değişkenleri:**
+   - `apps/backend/.env.example` içine `SENTRY_DSN` eklendi.
+   - `apps/frontend/.env.example` içine `VITE_SENTRY_DSN` eklendi.
+   - **ÖNEMLİ NOT (Kullanıcı Tarafı):** Sentry.io üzerinde oluşturulacak iki projenin DSN adresleri Vercel Dashboard'daki ortam değişkenlerine (`SENTRY_DSN` backend projesine, `VITE_SENTRY_DSN` frontend projesine) eklenmelidir.
+5. **Dokümantasyon:**
+   - `DECISIONS.md` içerisine `ADR-019` eklendi.
 
 ---
 

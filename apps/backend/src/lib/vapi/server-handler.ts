@@ -11,6 +11,7 @@ import {
   handleTransferCall,
 } from './tools/index.js';
 import { buildSystemPromptDetails } from './system-prompt.js';
+import { captureBackendException } from '../logging/sentry.js';
 
 /**
  * Central dispatcher for all Vapi Server URL messages (ADR-006).
@@ -221,41 +222,53 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
 
       let resultText = '';
 
-      switch (functionName) {
-        case 'check_availability':
-        case 'checkAvailability':
-          resultText = await handleCheckAvailability(args, clinicId);
-          break;
+      try {
+        switch (functionName) {
+          case 'check_availability':
+          case 'checkAvailability':
+            resultText = await handleCheckAvailability(args, clinicId);
+            break;
 
-        case 'book_appointment':
-        case 'bookAppointment':
-          resultText = await handleBookAppointment(args, callId, clinicId);
-          break;
+          case 'book_appointment':
+          case 'bookAppointment':
+            resultText = await handleBookAppointment(args, callId, clinicId);
+            break;
 
-        case 'lookup_appointment':
-        case 'lookupAppointment':
-          resultText = await handleLookupAppointment(args, clinicId);
-          break;
+          case 'lookup_appointment':
+          case 'lookupAppointment':
+            resultText = await handleLookupAppointment(args, clinicId);
+            break;
 
-        case 'cancel_appointment':
-        case 'cancelAppointment':
-          resultText = await handleCancelAppointment(args, clinicId);
-          break;
+          case 'cancel_appointment':
+          case 'cancelAppointment':
+            resultText = await handleCancelAppointment(args, clinicId);
+            break;
 
-        case 'reschedule_appointment':
-        case 'rescheduleAppointment':
-          resultText = await handleRescheduleAppointment(args, clinicId);
-          break;
+          case 'reschedule_appointment':
+          case 'rescheduleAppointment':
+            resultText = await handleRescheduleAppointment(args, clinicId);
+            break;
 
-        case 'transfer_call':
-        case 'transferCall':
-          resultText = await handleTransferCall(args);
-          break;
+          case 'transfer_call':
+          case 'transferCall':
+            resultText = await handleTransferCall(args);
+            break;
 
-        default:
-          console.warn(`[vapi] Unknown tool function called: ${functionName}`);
-          resultText = `İstediğiniz "${functionName}" fonksiyonu sistemde tanımlı değil.`;
-          break;
+          default:
+            console.warn(`[vapi] Unknown tool function called: ${functionName}`);
+            resultText = `İstediğiniz "${functionName}" fonksiyonu sistemde tanımlı değil.`;
+            break;
+        }
+      } catch (toolError) {
+        console.error(`[vapi] Unexpected error executing tool ${functionName}:`, toolError);
+        captureBackendException(toolError, {
+          source: 'vapi_tool_execution',
+          functionName,
+          clinicId,
+          toolCallId,
+          args,
+        });
+        resultText = 'Üzgünüm, işleminizi gerçekleştirirken sistemsel bir hata oluştu. Lütfen biraz sonra tekrar deneyiniz.';
       }
 
       return {
