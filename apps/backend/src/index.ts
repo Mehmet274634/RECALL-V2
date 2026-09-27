@@ -46,15 +46,6 @@ app.use(
 // --- Body Parsing ---
 app.use(express.json());
 
-// --- Sentry Debug Test Endpoint ---
-app.get('/api/debug/sentry-test', (_req, _res) => {
-  const testError = new Error('RECALL Sentry Backend Verification Test Error');
-  captureBackendException(testError, {
-    testContext: 'Verification test from /api/debug/sentry-test',
-    patientPhone: '+905321112233', // will be scrubbed by KVKK filter
-  });
-  throw testError;
-});
 
 // --- Route Mounts ---
 app.use('/api/health', healthRouter);
