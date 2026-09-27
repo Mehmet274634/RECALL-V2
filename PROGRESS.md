@@ -1,7 +1,24 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 1 Son Sertleştirme — Çift Kilitli Dev Fallback Tamamlandı)
+> **Son güncelleme:** 2026-09-27 (clinicId Onboarding Boşluğu Belgelendi & Frontend 403 Görünür Hata Uyarısı Eklendi)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — clinicId Onboarding Sorunu & Frontend 403 Görsel Uyarıları
+
+**Bulunan Sorun:**
+- Faz 1 review'ında eklenen çoklu-kiracı (multi-tenant) veri izolasyonu (`req.clinicId` zorunluluğu) nedeniyle, Clerk üzerinde yeni açılan sekreter/test hesaplarının `public_metadata.clinicId` alanı boş olduğunda backend tüm dashboard API isteklerini (`/api/doctors`, `/api/appointments`, `/api/call-logs`, `/api/stats`) 403 Forbidden ile reddetmekteydi.
+- Frontend tarafında bu hata sessizce konsola düştüğünden dolayı tablolar ve yeni randevu modalındaki doktor dropdown'ı boş listeleniyor, kullanıcının "veritabanında doktor yok mu" şüphesine yol açıyordu.
+
+**Yapılan Çözüm & İyileştirmeler:**
+1. **Veritabanı Durumu Doğrulandı:** Neon PostgreSQL üretim veritabanı incelendi; "Recall Sağlık Kliniği" (`cmujsx0740000uyq8jo95ywjg`) ve 3 hekimin (Dr. Ahmet Yılmaz, Dr. Zeynep Kaya, Dr. Mehmet Demir) veritabanında eksiksiz ve doğru `clinicId` ile kayıtlı olduğu teyit edildi.
+2. **Geçici Onboarding Prosedürü:** Clerk Dashboard üzerinden test kullanıcısının `public_metadata` alanına manuel olarak `{ "clinicId": "cmujsx0740000uyq8jo95ywjg" }` ataması yapılması kurala bağlandı ve `ADR-014` olarak belgelendi.
+3. **Frontend 403 Görünür Hata Uyarısı:**
+   - `apps/frontend/src/lib/api.ts` içine HTTP durum kodunu taşıyan `ApiError` sınıfı eklendi.
+   - `DashboardPage`, `DoctorsPage` ve `CallsPage` bileşenlerinde 403 hatası yakalandığında ekranın üstünde görünür bir sarı/amber uyarı kutusu gösterilmesi sağlandı: *"Hesabınıza henüz bir klinik atanmamış. Lütfen yöneticinizle iletişime geçin veya Clerk profilinize klinik kimliği tanımlanmasını isteyin."*
+   - Randevu ekleme modalındaki doktor seçim kutusunda liste boş olduğunda yetki eksikliği açıkça belirtildi.
+4. **Uçtan Uca Doğrulama:** Vapi AI (sesli asistan simülasyonu) ve Panel (sekreter arayüzünden manuel) üzerinden randevu oluşturma kanalları başarıyla test edildi, randevuların ve çağrı loglarının dashboard'da doğru rozetlerle listelendiği doğrulandı.
 
 ---
 

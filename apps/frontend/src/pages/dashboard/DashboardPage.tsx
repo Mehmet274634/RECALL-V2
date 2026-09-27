@@ -10,9 +10,10 @@ import {
   Search,
   Check,
   X,
+  AlertCircle,
 } from 'lucide-react';
 
-import { api, type Appointment, type Doctor, type DashboardStats } from '../../lib/api';
+import { api, ApiError, type Appointment, type Doctor, type DashboardStats } from '../../lib/api';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -20,6 +21,7 @@ export default function DashboardPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -41,6 +43,7 @@ export default function DashboardPage() {
 
   const loadData = useCallback(async () => {
     try {
+      setAuthError(null);
       const [statsData, apptsData, docsData] = await Promise.all([
         api.getStats(),
         api.getAppointments({
@@ -57,8 +60,15 @@ export default function DashboardPage() {
       if (docsData.doctors.length > 0 && !newDoctorId) {
         setNewDoctorId(docsData.doctors[0].id);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error loading dashboard data:', error);
+      if (error instanceof ApiError && error.status === 403) {
+        setAuthError(
+          'Hesabınıza henüz bir klinik atanmamış. Lütfen yöneticinizle iletişime geçin veya Clerk profilinize klinik kimliği tanımlanmasını isteyin.',
+        );
+      } else if (error instanceof Error) {
+        setAuthError(error.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -171,6 +181,17 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Auth / Clinic Assignment Error Banner */}
+      {authError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold">Klinik Yetkilendirme Uyarısı</p>
+            <p className="mt-0.5 text-xs opacity-90">{authError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -487,13 +508,20 @@ export default function DashboardPage() {
                   required
                   value={newDoctorId}
                   onChange={(e) => setNewDoctorId(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  disabled={doctors.length === 0}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-60"
                 >
-                  {doctors.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      {doc.name} {doc.specialty ? `— ${doc.specialty}` : ''}
+                  {doctors.length === 0 ? (
+                    <option value="">
+                      {authError ? 'Klinik yetkisi eksik (doktorlar yüklenemedi)' : 'Kayıtlı doktor bulunamadı'}
                     </option>
-                  ))}
+                  ) : (
+                    doctors.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {doc.name} {doc.specialty ? `— ${doc.specialty}` : ''}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 

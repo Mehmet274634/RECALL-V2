@@ -1,24 +1,33 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Phone, Calendar, RefreshCw, X, MessageSquare, Clock, ArrowRight } from 'lucide-react';
+import { Phone, Calendar, RefreshCw, X, MessageSquare, Clock, ArrowRight, AlertCircle } from 'lucide-react';
 
-import { api, type CallLog } from '../../lib/api';
+import { api, ApiError, type CallLog } from '../../lib/api';
 
 export default function CallsPage() {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
 
   const loadData = useCallback(async () => {
     try {
+      setAuthError(null);
       const data = await api.getCallLogs({
         date: selectedDate || undefined,
         limit: 50,
       });
       setCallLogs(data.callLogs);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error loading call logs:', error);
+      if (error instanceof ApiError && error.status === 403) {
+        setAuthError(
+          'Hesabınıza henüz bir klinik atanmamış. Lütfen yöneticinizle iletişime geçin veya Clerk profilinize klinik kimliği tanımlanmasını isteyin.',
+        );
+      } else if (error instanceof Error) {
+        setAuthError(error.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -79,6 +88,17 @@ export default function CallsPage() {
           </button>
         </div>
       </div>
+
+      {/* Auth / Clinic Assignment Error Banner */}
+      {authError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold">Klinik Yetkilendirme Uyarısı</p>
+            <p className="mt-0.5 text-xs opacity-90">{authError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Calls List */}
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">

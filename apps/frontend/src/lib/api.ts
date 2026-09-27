@@ -21,6 +21,15 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const authHeader = await getAuthHeader();
   const url = `${API_BASE_URL}${endpoint}`;
@@ -42,7 +51,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       // ignore
     }
-    throw new Error(errorMsg);
+    throw new ApiError(errorMsg, res.status);
   }
 
   return res.json();

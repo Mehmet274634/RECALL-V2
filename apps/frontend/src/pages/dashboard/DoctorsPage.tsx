@@ -1,17 +1,27 @@
 import { useState, useEffect } from 'react';
-import { Stethoscope, Clock, Calendar, CheckCircle2 } from 'lucide-react';
+import { Stethoscope, Clock, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
 
-import { api, type Doctor } from '../../lib/api';
+import { api, ApiError, type Doctor } from '../../lib/api';
 
 export default function DoctorsPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getDoctors()
       .then((data) => setDoctors(data.doctors))
-      .catch((err) => console.error(err))
+      .catch((err: unknown) => {
+        console.error(err);
+        if (err instanceof ApiError && err.status === 403) {
+          setAuthError(
+            'Hesabınıza henüz bir klinik atanmamış. Lütfen yöneticinizle iletişime geçin veya Clerk profilinize klinik kimliği tanımlanmasını isteyin.',
+          );
+        } else if (err instanceof Error) {
+          setAuthError(err.message);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -24,6 +34,17 @@ export default function DoctorsPage() {
           Asistanın randevu oluşturabileceği aktif hekimler ve çalışma saatleri
         </p>
       </div>
+
+      {/* Auth / Clinic Assignment Error Banner */}
+      {authError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-2xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold">Klinik Yetkilendirme Uyarısı</p>
+            <p className="mt-0.5 text-xs opacity-90">{authError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -375,6 +375,44 @@ Geliştirme ortamı klinik fallback mekanizması **çift kilitli (double-gate / 
 
 ---
 
+## ADR-014: Sekreter Kullanıcılarına Klinik Ataması — Manuel Onboarding Süreci (Geçici)
+
+- **Tarih:** 2026-09-27
+- **Durum:** ⚠️ Kabul edildi (geçici çözüm, Faz 2/4'te otomatikleştirilecek)
+
+**Bağlam:**
+Faz 1 code review aşamasında eklenen çoklu-kiracı (multi-tenant) veri izolasyonu ve IDOR koruması (`req.clinicId` zorunluluğu, ADR-011, ADR-012, ADR-013) nedeniyle, backend tüm dashboard REST isteklerini (`/api/doctors`, `/api/appointments`, `/api/call-logs`, `/api/stats`) kullanıcının Clerk oturum token'ından çözülen `clinicId` ile filtreler.
+Clerk üzerinde yeni bir sekreter/kullanıcı hesabı açıldığında, eğer kullanıcının profilindeki `public_metadata.clinicId` (veya custom session claim) alanı boşsa:
+1. Backend isteği haklı olarak `403 Forbidden` (`Erişim reddedildi: Kullanıcı oturumuna atanmış geçerli bir klinik bulunamadı.`) ile reddeder.
+2. Frontend tarafında bu durum sessizce yakalanırsa randevu tabloları ve modal doktor dropdown'ları boş kalır; kullanıcı sistemsel bir hata veya veri eksikliği olduğunu düşünebilir.
+
+**Karar:**
+1. **Manuel Onboarding Operasyonu (Geçici MVP Yaklaşımı):**
+   - Şimdilik sisteme yeni bir sekreter/test kullanıcısı eklendiğinde, Clerk Dashboard (`dashboard.clerk.com`) üzerinden ilgili kullanıcının **Metadata** bölümüne manuel olarak JSON formatında klinik kimliği atanacaktır:
+     ```json
+     {
+       "clinicId": "<veritabanındaki_klinik_id>"
+     }
+     ```
+   - Örnek: "Recall Sağlık Kliniği" için `cmujsx0740000uyq8jo95ywjg`.
+   - Bu adım tamamlanmadan kullanıcı sisteme giriş yapabilse dahi hiçbir klinik verisine erişemez ve randevu oluşturamaz.
+2. **Kullanıcı Dostu Görünür Hata Bildirimi (Frontend UI):**
+   - API çağrılarında 403 Forbidden durumu yakalandığında, ekranların sessizce boş kalması engellendi.
+   - `DashboardPage`, `DoctorsPage` ve `CallsPage` bileşenlerine belirgin bir amber uyarı kutusu eklendi: *"Hesabınıza henüz bir klinik atanmamış. Lütfen yöneticinizle iletişime geçin veya Clerk profilinize klinik kimliği tanımlanmasını isteyin."*
+   - Yeni randevu oluşturma modalındaki doktor seçim kutusunda liste boş kaldığında durum açıkça belirtildi.
+
+**Alternatifler:**
+- *Token'da klinik yoksa otomatik ilk kliniğe atamak (Sessiz Fallback):* ADR-012 ile güvenlik açığı (IDOR) nedeniyle kesin olarak yasaklandı.
+- *Hemen Faz 1 içinde tam otomatik davet/onboarding mimarisi kurmak:* Faz 1 kapsamını aşırı şişirir; Clerk Organizations veya davet token'ı altyapısı ayrı bir faz gerektirir.
+
+**Sonuçlar ve Riskler:**
+- (+) Yetkisiz/atanmamış kullanıcılar hiçbir kliniğin verisini göremez veya değiştiremez.
+- (+) Kullanıcı neden veri göremediğini anında arayüzdeki uyarıdan anlar, "doktor listesi neden gelmiyor" belirsizliği ortadan kalkar.
+- (–) Süreç operasyonel olarak manueldir; her yeni personel için Clerk panelinden JSON metadata girilmesi gerekir.
+- **Takip Eden Adım:** Faz 2 veya Faz 4'te (Çoklu Klinik SaaS) davet bağlantısı ile kayıt olma ve kliniğe otomatik bağlanma (onboarding flow / Clerk Organizations) geliştirilmelidir.
+
+---
+
 <!--
 YENİ ADR EKLEME ŞABLONU:
 
