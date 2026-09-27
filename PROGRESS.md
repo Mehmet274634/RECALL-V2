@@ -1,7 +1,25 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 1 Code Review & Hardening tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Faz 1 Review Takip — Tenant Güvenliği, Deadlock Önleme ve Telefon Doğrulama Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 1 Review Takip: Tenant Güvenliği, Deadlock Önleme ve Aktif Telefon Doğrulama
+
+**Ne yapıldı:**
+1. **Sessiz Production Fallback'inin Kaldırılması:**
+   - `clerk.ts` içinde token'dan `clinicId` çözülemediğinde varsayılan kliniğe sessizce düşen fallback production'da tamamen kaldırıldı. Token'ında açık bir klinik claim'i (`clinicId`, `public_metadata.clinicId`, `org_id`) bulunmayan kullanıcılar doğrudan **403 Forbidden** ile engellenmektedir.
+   - Sadece `NODE_ENV === 'development'` ve placeholder anahtarlar varken lokal geliştirme için fallback aktiftir.
+2. **Reschedule & Cross-Doctor Deadlock Önleme:**
+   - Hekimler arası karşılıklı randevu takaslarında ters sıralı `FOR UPDATE` alımından kaynaklanabilecek deadlock riskine karşı sıralı kilitleme (`doctorIdsToLock = Array.from(new Set([srcId, targetId])).sort()`) mekanizması hem `rescheduleAppointment` hem de `PATCH /api/appointments/:id` içerisine uygulandı.
+   - Eşzamanlı çapraz hekim takası testi ile deadlock yaşanmadığı doğrulandı.
+3. **Aktif Telefon Doğrulama (`isValidPhone`):**
+   - `bookAppointment`, `lookupAppointment`, `cancelAppointment`, `rescheduleAppointment`, `POST /api/appointments` (Zod refine) ve tüm Vapi tool'larına `isValidPhone` aktif kontrolü entegre edildi.
+   - Eksik/geçersiz numaralar ("123", "0532" vb.) doğrudan anlamlı hata mesajıyla reddedildi.
+4. **Belgeleme & Test:**
+   - `ADR-012` [DECISIONS.md](file:///c:/Users/ev/Desktop/RECALL%20V2/DECISIONS.md) dosyasına eklendi.
+   - `apps/backend/scripts/test-followup-review.ts` ile tüm 3 madde otomatik senaryolarla test edildi ve başarıyla geçti.
 
 ---
 

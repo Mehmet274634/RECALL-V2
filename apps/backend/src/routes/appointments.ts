@@ -4,7 +4,7 @@ import { AppointmentStatus } from '@prisma/client';
 
 import { prisma } from '../lib/db/client.js';
 import { requireAuth, type AuthenticatedRequest } from '../lib/auth/clerk.js';
-import { normalizePhone } from '../lib/phone.js';
+import { normalizePhone, isValidPhone } from '../lib/phone.js';
 
 export const appointmentsRouter = Router();
 
@@ -97,7 +97,9 @@ appointmentsRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
 
 const createAppointmentSchema = z.object({
   patientName: z.string().min(2),
-  patientPhone: z.string().min(8),
+  patientPhone: z.string().refine((val) => isValidPhone(val), {
+    message: 'Lütfen geçerli bir telefon numarası giriniz (örn: 0532 123 45 67).',
+  }),
   doctorId: z.string(),
   startsAt: z.string(), // ISO string
   durationMinutes: z.number().default(30),
@@ -244,11 +246,17 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
       dataToUpdate.endsAt = newEndsAt;
     }
 
-    // Run in transaction with row-level lock on doctor if updating schedule
+    // Run in transaction with sorted deadlock-free row-level locks on doctors if updating schedule
     const updated = await prisma.$transaction(async (tx) => {
-      if (newStartsAt && newEndsAt && targetStatus === 'SCHEDULED') {
-        // Lock doctor record to prevent concurrent double-booking
-        await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${targetDoctorId} FOR UPDATE`;
+      if (targetStatus === 'SCHEDULED' && (newStartsAt || doctorId)) {
+        // Lock both source and target doctors in strictly ASCENDING order to prevent deadlocks
+        const doctorIdsToLock = Array.from(new Set([existing.doctorId, targetDoctorId])).sort();
+        for (const docId of doctorIdsToLock) {
+          await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${docId} FOR UPDATE`;
+        }
+
+        const checkStartsAt = newStartsAt || existing.startsAt;
+        const checkEndsAt = newEndsAt || existing.endsAt;
 
         const conflict = await tx.appointment.findFirst({
           where: {
@@ -257,8 +265,8 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
             status: 'SCHEDULED',
             id: { not: existing.id },
             AND: [
-              { startsAt: { lt: newEndsAt } },
-              { endsAt: { gt: newStartsAt } },
+              { startsAt: { lt: checkEndsAt } },
+              { endsAt: { gt: checkStartsAt } },
             ],
           },
         });

@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> **Son güncelleme:** 2026-09-27 (ADR-011 eklendi — Faz 1 Güvenlik ve Mimari Sertleştirme: Row-Level Locking, Multi-tenant İzolasyonu, Telefon Normalizasyonu ve Webhook Guard)
+> **Son güncelleme:** 2026-09-27 (ADR-012 eklendi — Tenant Fallback Güvenliği, Çapraz Hekim Deadlock Önleme ve Aktif Telefon Doğrulama)
 > **Bu dosya:** Mimari/teknik kararların ADR (Architecture Decision Record) formatında gerekçeli kaydıdır. Kararlar silinmez; durumu değişirse (örn. "değiştirildi") yeni bir ADR eklenir ve eskisi "değiştirildi" olarak işaretlenip yeni olana referans verir.
 
 ---
@@ -319,6 +319,36 @@ Faz 1 tamamlandıktan sonra yapılan mimari ve güvenlik kod incelemesinde 4 pot
 - (+) Multi-tenant yetki aşımı (IDOR) riski ortadan kaldırıldı.
 - (+) Kullanıcı farklı tuşlama/boşluk formatlarında arasa dahi doğru hasta ve randevu anında eşleşir.
 - (+) Vapi sunucu güvenliği endüstriyel standarda yükseltildi.
+
+---
+
+## ADR-012: Tenant Fallback Güvenliği, Çapraz Hekim Deadlock Önleme ve Aktif Telefon Doğrulama
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+ADR-011 sonrasında yapılan ikinci seviye mimari incelemede 3 spesifik risk noktası netleştirildi:
+1. **Sessiz clinicId Fallback Riski:** `clerk.ts` içinde token'dan `clinicId` çözülemediğinde sessizce veritabanındaki varsayılan kliniğe düşme (fallback) mekanizması bulunuyordu. Bu durum production ortamında yetkisiz veya atanmamış bir kullanıcının ilk kliniğin verilerine istemeden erişmesine (IDOR benzeri tenant sızıntısı) yol açabilirdi.
+2. **Reschedule / PATCH Sırasında Deadlock Riski:** Randevunun hekimi değiştirildiğinde (Doctor A -> Doctor B ve eşzamanlı Doctor B -> Doctor A) iki transaction ters sırada `SELECT ... FOR UPDATE` kilidi talep ederse veritabanında deadlock (karşılıklı kilitlenme) oluşabilirdi.
+3. **Aktif Telefon Doğrulama (`isValidPhone`):** `isValidPhone` fonksiyonunun yazılmış olmasına rağmen servis (`bookAppointment`, `lookupAppointment`, `cancellation`) ve route katmanlarında doğrudan çağrılmadığı; eksik haneli (örn: "123", "0532") girişlerin veritabanına kadar ilerleyebileceği belirlendi.
+
+**Karar:**
+1. **Sessiz Production Fallback'inin Kaldırılması:**
+   - `resolveClinicIdFromToken` fonksiyonu ayrıştırıldı; token iddialarında (`clinicId`, `public_metadata.clinicId` veya kayıtlı Clinic ile eşleşen `org_id`) açık bir klinik eşleşmesi yoksa **kesinlikle `null`** döndürür.
+   - `requireAuth` middleware'i `clinicId === null` olduğunda isteği **403 Forbidden** ile sonlandırır; sessizce varsayılan kliniğe düşüş production'da tamamen engellendi.
+   - Varsayılan kliniğe düşme yalnızca `NODE_ENV === 'development'` ve `CLERK_SECRET_KEY` yerel placeholder modundayken lokal geliştirme kolaylığı sağlamak için aktiftir.
+2. **Sıralı (Sorted) Deadlock-Free Row-Level Locking:**
+   - Hem `rescheduleAppointment` fonksiyonuna (`newDoctorId` parametresi eklenerek) hem de `PATCH /api/appointments/:id` route handler'ına sıralı kilit mekanizması eklendi.
+   - İşleme dahil olan tüm hekim ID'leri (`[sourceDoctorId, targetDoctorId]`) küçükten büyüğe (`.sort()`) dizilir ve `FOR UPDATE` kilitleri her transaction tarafından **daima aynı deterministik sırada** alınır. Döngüsel bekleme grafiği (cyclic wait graph) oluşamayacağından deadlock riski matematiksel olarak sıfırlandı.
+3. **Her Giriş Noktasında Aktif Telefon Doğrulama:**
+   - `bookAppointment`, `lookupAppointment`, `cancelAppointment`, `rescheduleAppointment`, `POST /api/appointments` (Zod refine) ve tüm Vapi tool handler'larına `isValidPhone` kontrolü eklendi.
+   - 10 haneden kısa veya geçerli TR/E.164 kalıbına uymayan numaralar doğrudan anlamlı Türkçe hata mesajıyla reddedilir.
+
+**Sonuçlar:**
+- (+) Token'ında klinik bulunmayan kullanıcıların veriye erişimi kesin olarak 403 ile engellendi.
+- (+) Hekimler arası karşılıklı eşzamanlı randevu takaslarında (swap) deadlock yaşanmadığı test edildi.
+- (+) Eksik/hatalı telefon numaraları tüm kanallarda (sesli asistan + web paneli) anında reddedilmektedir.
 
 ---
 

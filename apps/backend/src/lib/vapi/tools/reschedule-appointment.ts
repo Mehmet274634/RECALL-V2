@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { rescheduleAppointment } from '../../scheduling/cancellation.js';
+import { isValidPhone } from '../../phone.js';
 
 const rescheduleAppointmentSchema = z.object({
   appointmentId: z.string().optional(),
@@ -40,6 +41,11 @@ export async function handleRescheduleAppointment(args: unknown): Promise<string
     new_time,
     time,
   } = parsed.data;
+
+  const phone = (patientPhone || patient_phone || '').trim();
+  if (phone && !isValidPhone(phone)) {
+    return 'Randevu saati değişikliği için belirttiğiniz telefon numarası geçersizdir. Lütfen başında sıfır ile cep telefonu numaranızı söyleyiniz.';
+  }
 
   const targetDate = newDate || new_date || date;
   const targetTime = newTime || new_time || time;

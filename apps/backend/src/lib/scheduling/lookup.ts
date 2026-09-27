@@ -1,6 +1,6 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { normalizePhone } from '../phone.js';
+import { normalizePhone, isValidPhone } from '../phone.js';
 
 export interface LookupAppointmentParams {
   clinicId?: string;
@@ -33,6 +33,14 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
       success: false,
       appointments: [],
       message: 'Randevu sorgulamak için lütfen telefon numaranızı veya adınızı belirtiniz.',
+    };
+  }
+
+  if (params.patientPhone && !isValidPhone(params.patientPhone)) {
+    return {
+      success: false,
+      appointments: [],
+      message: 'Geçersiz telefon numarası. Lütfen geçerli bir telefon numarası belirtiniz (örn: 0532 123 45 67).',
     };
   }
 

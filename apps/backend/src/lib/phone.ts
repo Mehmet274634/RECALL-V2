@@ -31,7 +31,7 @@ export function normalizePhone(raw: string, defaultCountry: 'TR' | string = 'TR'
   if (digits.length === 10) {
     return `+90${digits}`;
   }
-  if (trimmed.startsWith('+') && digits.length >= 8) {
+  if (trimmed.startsWith('+') && digits.length >= 10) {
     return `+${digits}`;
   }
 
@@ -40,15 +40,38 @@ export function normalizePhone(raw: string, defaultCountry: 'TR' | string = 'TR'
 
 /**
  * Validates whether a phone number is a valid telephone number.
+ * Rejects incomplete or invalid numbers (e.g. "123", "0532").
  */
 export function isValidPhone(raw: string, defaultCountry: 'TR' | string = 'TR'): boolean {
   if (!raw || typeof raw !== 'string') {
     return false;
   }
-  try {
-    return isValidPhoneNumber(raw.trim(), defaultCountry as 'TR');
-  } catch {
-    const digits = raw.replace(/\D/g, '');
-    return digits.length >= 10;
+  const trimmed = raw.trim();
+  if (trimmed.length < 10) {
+    return false;
   }
+
+  try {
+    if (isValidPhoneNumber(trimmed, defaultCountry as 'TR')) {
+      return true;
+    }
+  } catch {
+    // continue to fallback check
+  }
+
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10 && digits.startsWith('5')) {
+    return true;
+  }
+  if (digits.length === 11 && digits.startsWith('05')) {
+    return true;
+  }
+  if (digits.length === 12 && digits.startsWith('905')) {
+    return true;
+  }
+  if (digits.length >= 10 && trimmed.startsWith('+')) {
+    return true;
+  }
+
+  return false;
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { cancelAppointment } from '../../scheduling/cancellation.js';
+import { isValidPhone } from '../../phone.js';
 
 const cancelAppointmentSchema = z.object({
   appointmentId: z.string().optional(),
@@ -28,6 +29,11 @@ export async function handleCancelAppointment(args: unknown): Promise<string> {
     patientName,
     patient_name,
   } = parsed.data;
+
+  const phone = (patientPhone || patient_phone || '').trim();
+  if (phone && !isValidPhone(phone)) {
+    return 'İptal işlemi için belirttiğiniz telefon numarası geçersizdir. Lütfen başında sıfır ile cep telefonu numaranızı söyleyiniz.';
+  }
 
   try {
     const result = await cancelAppointment({

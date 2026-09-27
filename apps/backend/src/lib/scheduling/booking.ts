@@ -4,7 +4,7 @@ import { getDefaultClinic } from '../db/clinic.js';
 import type { Appointment } from '@prisma/client';
 
 export { normalizePhone, isValidPhone } from '../phone.js';
-import { normalizePhone } from '../phone.js';
+import { normalizePhone, isValidPhone } from '../phone.js';
 
 export interface BookAppointmentParams {
   clinicId?: string;
@@ -37,6 +37,13 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
 
   if (!params.patientPhone?.trim()) {
     return { success: false, message: 'Randevu oluşturmak için telefon numarası gereklidir.' };
+  }
+
+  if (!isValidPhone(params.patientPhone)) {
+    return {
+      success: false,
+      message: 'Geçersiz telefon numarası. Lütfen geçerli bir telefon numarası belirtiniz (örn: 0532 123 45 67).',
+    };
   }
 
   // 1. Resolve Doctor

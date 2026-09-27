@@ -10,47 +10,58 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * Resolves the clinicId for the authenticated user/session.
+ * Resolves the clinicId for the authenticated user/session strictly from verified token claims.
+ * Returns null if no clinic mapping can be determined from the token.
+ *
  * Priority:
- * 1. Token custom claim: clinicId
- * 2. Token publicMetadata or metadata: clinicId
- * 3. Token organization ID (org_id / orgId) matching Clinic
- * 4. Default registered clinic (MVP single-tenant fallback)
+ * 1. Token custom claim: clinicId / clinic_id
+ * 2. Token public_metadata or metadata: clinicId
+ * 3. Token organization ID (org_id / orgId) matching a registered Clinic
+ *
+ * In production: NEVER falls back silently to a default clinic. If the token
+ * lacks a clinic claim, access is strictly rejected with 403 Forbidden.
  */
-async function resolveClinicId(verifiedClaims?: Record<string, unknown>): Promise<string> {
-  if (verifiedClaims) {
-    if (typeof verifiedClaims.clinicId === 'string' && verifiedClaims.clinicId) {
-      return verifiedClaims.clinicId;
-    }
-
-    const publicMetadata = verifiedClaims.public_metadata || verifiedClaims.publicMetadata;
-    if (publicMetadata && typeof publicMetadata === 'object' && 'clinicId' in publicMetadata) {
-      const cid = (publicMetadata as Record<string, unknown>).clinicId;
-      if (typeof cid === 'string' && cid) return cid;
-    }
-
-    const orgId = verifiedClaims.org_id || verifiedClaims.orgId;
-    if (typeof orgId === 'string' && orgId) {
-      const clinic = await prisma.clinic.findFirst({
-        where: { id: orgId },
-      });
-      if (clinic) return clinic.id;
-    }
+export async function resolveClinicIdFromToken(
+  verifiedClaims?: Record<string, unknown>,
+): Promise<string | null> {
+  if (!verifiedClaims) {
+    return null;
   }
 
-  // MVP single-tenant fallback: bind to the registered clinic
-  const defaultClinic = await getDefaultClinic();
-  return defaultClinic.id;
+  // 1. Direct claim: clinicId or clinic_id
+  const directClinicId = verifiedClaims.clinicId || verifiedClaims.clinic_id;
+  if (typeof directClinicId === 'string' && directClinicId.trim()) {
+    return directClinicId.trim();
+  }
+
+  // 2. Metadata claim: public_metadata.clinicId or metadata.clinicId
+  const publicMetadata = verifiedClaims.public_metadata || verifiedClaims.publicMetadata;
+  if (publicMetadata && typeof publicMetadata === 'object' && 'clinicId' in publicMetadata) {
+    const cid = (publicMetadata as Record<string, unknown>).clinicId;
+    if (typeof cid === 'string' && cid.trim()) return cid.trim();
+  }
+
+  // 3. Organization ID matching Clinic
+  const orgId = verifiedClaims.org_id || verifiedClaims.orgId;
+  if (typeof orgId === 'string' && orgId.trim()) {
+    const clinic = await prisma.clinic.findFirst({
+      where: { id: orgId.trim() },
+    });
+    if (clinic) return clinic.id;
+  }
+
+  return null;
 }
 
 /**
  * Express middleware to enforce Clerk JWT authentication for dashboard routes.
  *
  * In production: Strictly verifies Bearer token with CLERK_SECRET_KEY, resolves
- * the tenant's clinicId, and attaches it securely to req.clinicId.
+ * the tenant's clinicId from token claims, and attaches it to req.clinicId.
+ * Rejects with 403 Forbidden if no clinicId is associated with the token.
  *
  * In development: If CLERK_SECRET_KEY is a placeholder/dev, allows local development
- * while still securely stamping req.clinicId from the database.
+ * by binding req.clinicId to the local seeded clinic.
  */
 export async function requireAuth(
   req: AuthenticatedRequest,
@@ -60,14 +71,15 @@ export async function requireAuth(
   const secretKey = process.env.CLERK_SECRET_KEY;
   const authHeader = req.headers.authorization;
 
-  // Local dev mode without real Clerk keys
+  // Local development fallback: ONLY active when NODE_ENV === 'development' AND secretKey is missing/placeholder
   if (!secretKey || secretKey === 'placeholder' || secretKey.startsWith('dev-')) {
     if (process.env.NODE_ENV === 'development') {
       try {
-        req.clinicId = await resolveClinicId();
+        const defaultClinic = await getDefaultClinic();
+        req.clinicId = defaultClinic.id;
         return next();
       } catch {
-        res.status(500).json({ error: 'Veritabanında kayıtlı klinik bulunamadı' });
+        res.status(500).json({ error: 'Veritabanında kayıtlı klinik bulunamadı.' });
         return;
       }
     }
@@ -85,13 +97,18 @@ export async function requireAuth(
   try {
     const verified = await verifyToken(token, { secretKey });
     req.auth = verified as Record<string, unknown>;
-    req.clinicId = await resolveClinicId(verified as Record<string, unknown>);
 
-    if (!req.clinicId) {
-      res.status(403).json({ error: 'Kullanıcıya atanmış geçerli bir klinik bulunamadı.' });
+    // Strict production tenant resolution: token MUST resolve to a clinicId
+    const clinicId = await resolveClinicIdFromToken(verified as Record<string, unknown>);
+
+    if (!clinicId) {
+      res.status(403).json({
+        error: 'Erişim reddedildi: Kullanıcı oturumuna atanmış geçerli bir klinik bulunamadı.',
+      });
       return;
     }
 
+    req.clinicId = clinicId;
     next();
   } catch (error) {
     console.warn('[auth] Clerk token validation failed:', error);

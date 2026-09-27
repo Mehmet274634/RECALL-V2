@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { bookAppointment } from '../../scheduling/booking.js';
+import { isValidPhone } from '../../phone.js';
 
 const bookAppointmentSchema = z.object({
   patientName: z.string().optional(),
@@ -46,6 +47,10 @@ export async function handleBookAppointment(args: unknown, callId?: string): Pro
 
   if (!resolvedPhone) {
     return 'Randevu kaydı için lütfen telefon numaranızı belirtiniz.';
+  }
+
+  if (!isValidPhone(resolvedPhone)) {
+    return 'Belirttiğiniz telefon numarası geçersizdir. Lütfen geçerli bir cep telefonu numaranızı belirtiniz (örneğin: 0532 123 45 67).';
   }
 
   if (!resolvedDate || !resolvedTime) {

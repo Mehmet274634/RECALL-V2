@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { lookupAppointment } from '../../scheduling/lookup.js';
+import { isValidPhone } from '../../phone.js';
 
 const lookupAppointmentSchema = z.object({
   patientPhone: z.string().optional(),
@@ -24,6 +25,10 @@ export async function handleLookupAppointment(args: unknown): Promise<string> {
 
   if (!resolvedPhone && !resolvedName) {
     return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı veya adınızı belirtiniz.';
+  }
+
+  if (resolvedPhone && !isValidPhone(resolvedPhone)) {
+    return 'Belirttiğiniz telefon numarası geçersizdir. Lütfen geçerli bir telefon numarası belirtiniz (örneğin: 0532 123 45 67).';
   }
 
   try {

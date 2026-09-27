@@ -1,6 +1,6 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { normalizePhone } from '../phone.js';
+import { normalizePhone, isValidPhone } from '../phone.js';
 
 export interface CancelAppointmentParams {
   clinicId?: string;
@@ -14,6 +14,7 @@ export interface RescheduleAppointmentParams {
   appointmentId?: string;
   patientPhone?: string;
   patientName?: string;
+  newDoctorId?: string;
   newDate: string; // YYYY-MM-DD
   newTime: string; // HH:mm
 }
@@ -28,6 +29,13 @@ export interface ModificationResult {
  */
 export async function cancelAppointment(params: CancelAppointmentParams): Promise<ModificationResult> {
   const clinicId = params.clinicId || (await getDefaultClinic()).id;
+
+  if (params.patientPhone && !isValidPhone(params.patientPhone)) {
+    return {
+      success: false,
+      message: 'Geçersiz telefon numarası. Lütfen geçerli bir telefon numarası belirtiniz (örn: 0532 123 45 67).',
+    };
+  }
 
   let appointment = null;
 
@@ -95,6 +103,13 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
 export async function rescheduleAppointment(params: RescheduleAppointmentParams): Promise<ModificationResult> {
   const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
+  if (params.patientPhone && !isValidPhone(params.patientPhone)) {
+    return {
+      success: false,
+      message: 'Geçersiz telefon numarası. Lütfen geçerli bir telefon numarası belirtiniz (örn: 0532 123 45 67).',
+    };
+  }
+
   let appointment = null;
 
   if (params.appointmentId) {
@@ -151,16 +166,21 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
     };
   }
 
-  // Conflict check in transaction with row-level lock on doctor
+  const targetDoctorId = params.newDoctorId || appointment.doctorId;
+
+  // Conflict check in transaction with deadlock-free sorted row-level locks on doctors
   try {
     await prisma.$transaction(async (tx) => {
-      // Row-level lock on doctor record to prevent concurrent slot conflicts
-      await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${appointment.doctorId} FOR UPDATE`;
+      // Sort involved doctor IDs to guarantee deadlock freedom (no cyclic lock waits)
+      const doctorIdsToLock = Array.from(new Set([appointment.doctorId, targetDoctorId])).sort();
+      for (const docId of doctorIdsToLock) {
+        await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${docId} FOR UPDATE`;
+      }
 
       const conflict = await tx.appointment.findFirst({
         where: {
           clinicId,
-          doctorId: appointment.doctorId,
+          doctorId: targetDoctorId,
           status: 'SCHEDULED',
           id: { not: appointment.id },
           AND: [
@@ -177,6 +197,7 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
       await tx.appointment.update({
         where: { id: appointment.id },
         data: {
+          doctorId: targetDoctorId,
           startsAt: newStartsAt,
           endsAt: newEndsAt,
         },
