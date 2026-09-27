@@ -183,9 +183,9 @@ export async function requireAdmin(
 
   if (!secretKey || secretKey === 'placeholder' || secretKey.startsWith('dev-')) {
     if (isDevEnv && isDevFallbackAllowed) {
-      // Support test-driven role simulation via x-mock-role header in dev mode
+      // Support test-driven role simulation via x-mock-role header in dev mode (default to forbidden unless explicitly admin)
       const mockRole = req.headers['x-mock-role'];
-      if (mockRole === 'secretary') {
+      if (mockRole !== 'admin') {
         res.status(403).json({
           error: 'Erişim reddedildi: Bu işlem için Yönetici (Admin) yetkisi gereklidir.',
         });

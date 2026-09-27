@@ -27,6 +27,7 @@ export default function AdminLayout() {
   }, []);
 
   const handleToggleDevRole = () => {
+    if (!import.meta.env.DEV) return;
     const nextRole = role === 'admin' ? 'secretary' : 'admin';
     setDevRole(nextRole);
     setRole(nextRole);
@@ -72,14 +73,17 @@ export default function AdminLayout() {
               Sekreter Paneline Dön
             </Link>
 
-            {/* Dev role switch shortcut for testing */}
-            <button
-              onClick={handleToggleDevRole}
-              className="text-xs text-muted-foreground hover:text-foreground py-2 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              (Geliştirici Modu: Admin Rolüne Geç)
-            </button>
+            {/* Dev role switch shortcut for testing (strictly rendered in DEV mode only) */}
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                onClick={handleToggleDevRole}
+                className="text-xs text-muted-foreground hover:text-foreground py-2 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                (Geliştirici Modu: Admin Rolüne Geç)
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -158,15 +162,18 @@ export default function AdminLayout() {
               <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
               Sistem Yöneticisi (Admin)
             </div>
-            {/* Dev role switcher */}
-            <button
-              onClick={handleToggleDevRole}
-              title="Test için sekreter rolüne geç"
-              className="mt-2 text-[11px] text-violet-300 hover:text-white hover:underline flex items-center gap-1"
-            >
-              <RefreshCw className="w-3 h-3" />
-              Sekreter Rolüne Geç (Test)
-            </button>
+            {/* Dev role switcher (strictly rendered in DEV mode only) */}
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                onClick={handleToggleDevRole}
+                title="Test için sekreter rolüne geç"
+                className="mt-2 text-[11px] text-violet-300 hover:text-white hover:underline flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Sekreter Rolüne Geç (Test)
+              </button>
+            )}
           </div>
 
           <button

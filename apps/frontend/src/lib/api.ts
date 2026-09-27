@@ -11,8 +11,11 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 
   try {
-    const role = getUserRole();
-    headers['x-mock-role'] = role;
+    // Only send mock role header during local development/testing; never in production
+    if (import.meta.env.DEV) {
+      const role = getUserRole();
+      headers['x-mock-role'] = role;
+    }
 
     const clerk = (window as unknown as { Clerk?: { session?: { getToken: () => Promise<string | null> } } }).Clerk;
     if (clerk?.session) {

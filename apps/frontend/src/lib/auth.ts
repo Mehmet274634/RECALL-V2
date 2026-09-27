@@ -22,17 +22,20 @@ export function getUserRole(): 'admin' | 'secretary' {
     // Ignore in non-browser context
   }
 
-  // Local development / testing role switch support
-  const storedRole = typeof localStorage !== 'undefined' ? localStorage.getItem('recall_dev_role') : null;
-  if (storedRole === 'admin') {
-    return 'admin';
+  // Local development / testing role switch support (strictly restricted to DEV environment)
+  if (import.meta.env.DEV) {
+    const storedRole = typeof localStorage !== 'undefined' ? localStorage.getItem('recall_dev_role') : null;
+    if (storedRole === 'admin') {
+      return 'admin';
+    }
   }
 
   return 'secretary';
 }
 
 export function setDevRole(role: 'admin' | 'secretary') {
-  if (typeof localStorage !== 'undefined') {
+  // Never write or allow dev role tampering in production builds
+  if (import.meta.env.DEV && typeof localStorage !== 'undefined') {
     localStorage.setItem('recall_dev_role', role);
   }
 }
