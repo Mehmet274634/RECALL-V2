@@ -13,7 +13,7 @@ const checkAvailabilitySchema = z.object({
 /**
  * Tool handler: check_availability / checkAvailability
  */
-export async function handleCheckAvailability(args: unknown): Promise<string> {
+export async function handleCheckAvailability(args: unknown, clinicId?: string): Promise<string> {
   const parsed = checkAvailabilitySchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Lütfen randevu almak istediğiniz tarihi veya doktor branşını belirtiniz.';
@@ -23,6 +23,7 @@ export async function handleCheckAvailability(args: unknown): Promise<string> {
 
   try {
     const result = await checkAvailability({
+      clinicId,
       doctorName: doctorName || doctor_name,
       specialty: specialty || branch,
       date,

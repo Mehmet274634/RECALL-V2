@@ -68,13 +68,17 @@
 
 > **Önemli:** Vapi'de webhook (bildirim) ve tool-call (senkron fonksiyon çağrısı) ayrı endpoint'ler değildir — ikisi de aynı **Server URL**'e (`apps/backend`'in `/api/vapi/server` route'u) gelir, gövdedeki `message.type` alanına göre ayrışır. Dört mesaj tipi (`assistant-request`, `tool-calls`, `transfer-destination-request`, `knowledge-base-request`) senkron JSON yanıt gerektirir; geri kalanı (`status-update`, `end-of-call-report` vb.) fire-and-forget bildirimdir, `200` dönmek yeterlidir. Server URL; tool → assistant → phone number → org sırasıyla override edilebilir (bkz. `DECISIONS.md#adr-006`) — RECALL MVP'sinde tek bir assistant-level Server URL kullanılıyor.
 
-1. Hasta klinik numarasını arar → Vapi inbound assistant görüşmeyi karşılar.
-2. Assistant, konuşma akışı içinde uygun anda `check_availability` tool'unu çağırır → Vapi, `apps/backend`'in `POST /api/vapi/server` route'una istek gönderir; gövdede `message.type === "tool-calls"` ve `toolCallId` bulunur.
-3. Route, `message.type`'a bakıp isteği `src/lib/vapi/tools/check-availability.ts`'e dispatch eder; bu fonksiyon `src/lib/scheduling` üzerinden Prisma ile ilgili doktorun/kliniğin müsaitlik durumunu hesaplar. Route, Vapi'nin beklediği `{ "results": [{ "toolCallId": "...", "result": "..." }] }` formatında senkron yanıt döner.
-4. Vapi bu bilgiyi hastaya sesli olarak sunar, hasta bir saat seçer.
-5. Assistant `book_appointment` tool'unu çağırır → aynı route, `message.type === "tool-calls"` içindeki `toolCalls[].function.name` alanına bakıp `src/lib/vapi/tools/book-appointment.ts`'e yönlendirir; çakışma kontrolü yapılıp `appointments` tablosuna kayıt açılır, sonuç Vapi'ye döner ("randevunuz oluşturuldu" onayı için).
-6. Görüşme bittiğinde Vapi, `message.type === "end-of-call-report"` olan bir bildirimi yine aynı route'a gönderir; route bunu `tool-calls`'tan ayırt edip (senkron yanıt beklemeden) transcript, kayıt (recording) URL'si ve özeti `call_logs` tablosuna yazar, `200` döner.
-7. Klinik personeli, `apps/frontend`'deki sekreter panelinden (backend'in REST API'sini çağırarak) yeni randevuyu ve ilgili görüşme kaydını görür.
+1. Hasta klinik numarasını arar → Vapi inbound assistant çağrıyı karşılamadan önce veya karşılarken Server URL'e `assistant-request` gönderir.
+2. Backend (`server-handler.ts`), gelen çağrıdaki aranan numarayı (`call.phoneNumber` veya `phoneNumber.number`) veya `metadata.clinicId` değerini çözer. İlgili `Clinic` kaydını ve o kliniğe bağlı `Doctor` kadrosunu çeker.
+3. `buildSystemPrompt(clinicId)` fonksiyonu:
+   - Sabit mimari iskeleti (112 acil durum triage'ı, şeffaflık, samimi Türkçe konuşma kuralları ve tool adımları) korur.
+   - Kliniğe özel alanları (karşılama mesajı, hekim kadrosu/çalışma saatleri, branşlar, iptal politikası saati, özel talimatlar ve voiceId) dinamik enjekte eder.
+   - Vapi'ye bu kliniğe özel üretilmiş `assistant` konfigürasyonunu döner.
+4. Assistant, konuşma akışı içinde uygun anda `check_availability` tool'unu çağırır → Vapi, `apps/backend`'in `POST /api/vapi/server` route'una istek gönderir; gövdede `message.type === "tool-calls"` ve `toolCallId` bulunur. Aranan numara üzerinden çözülen `clinicId` ile ilgili kliniğin doktor takvimi taranır. Route, Vapi'nin beklediği `{ "results": [{ "toolCallId": "...", "result": "..." }] }` formatında senkron yanıt döner.
+5. Vapi bu bilgiyi hastaya sesli olarak sunar, hasta bir saat seçer.
+6. Assistant `book_appointment` tool'unu çağırır → aynı route, `message.type === "tool-calls"` içindeki `toolCalls[].function.name` alanına bakıp `src/lib/vapi/tools/book-appointment.ts`'e yönlendirir; ilgili `clinicId` altında çakışma kontrolü ve hekim satır kilitlemesi yapılıp `appointments` tablosuna kayıt açılır, sonuç Vapi'ye döner.
+7. Görüşme bittiğinde Vapi, `message.type === "end-of-call-report"` olan bir bildirimi yine aynı route'a gönderir; route bunu `tool-calls`'tan ayırt edip (senkron yanıt beklemeden) transcript, kayıt (recording) URL'si ve özeti ilgili kliniğin `call_logs` tablosuna yazar, `200` döner.
+8. Klinik personeli, `apps/frontend`'deki sekreter panelinden (backend'in REST API'sini çağırarak) yeni randevuyu ve ilgili görüşme kaydını görür.
 
 **Kimlik doğrulama (Vapi → backend):** Vapi, Server URL'e gelen her isteğe `VAPI_SERVER_SECRET` değerini opsiyonel olarak `Authorization: Bearer <secret>` (veya legacy `X-Vapi-Secret`) header'ı ile ekleyebilir; route bu header'ı doğrulamadan hiçbir isteği işlemez (bkz. `CONVENTIONS.md` yasaklı pattern'ler).
 

@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 
 import { prisma } from '../db/client.js';
-import { getDefaultClinic } from '../db/clinic.js';
+import { getDefaultClinic, findClinicByPhoneNumber } from '../db/clinic.js';
 import {
   handleCheckAvailability,
   handleBookAppointment,
@@ -10,7 +10,7 @@ import {
   handleRescheduleAppointment,
   handleTransferCall,
 } from './tools/index.js';
-import { RECALL_SYSTEM_PROMPT } from './system-prompt.js';
+import { buildSystemPromptDetails } from './system-prompt.js';
 
 /**
  * Central dispatcher for all Vapi Server URL messages (ADR-006).
@@ -40,19 +40,7 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
       break;
 
     case 'assistant-request':
-      console.log('[vapi] assistant-request received — returning dynamic assistant configuration with updated prompt');
-      res.status(200).json({
-        assistant: {
-          model: {
-            messages: [
-              {
-                role: 'system',
-                content: RECALL_SYSTEM_PROMPT,
-              },
-            ],
-          },
-        },
-      });
+      await handleAssistantRequest(body, res);
       break;
 
     case 'transfer-destination-request':
@@ -95,8 +83,102 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
 }
 
 /**
+ * Extracts inbound phone number or clinic identifier from Vapi message payload.
+ */
+function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
+  phoneNumber?: string;
+  clinicId?: string;
+} {
+  const message = body?.message as Record<string, unknown> | undefined;
+  const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
+  const customer = (message?.customer || call?.customer) as Record<string, unknown> | undefined;
+  const phoneNumberObj = (message?.phoneNumber || call?.phoneNumber) as Record<string, unknown> | undefined;
+
+  // 1. Inbound dialed number (to)
+  const dialedNumber =
+    (phoneNumberObj?.number as string) ||
+    (call?.phoneNumber as string) ||
+    (call?.to as string) ||
+    (message?.to as string);
+
+  // 2. Custom metadata or assistant overrides
+  const assistantOverrides = call?.assistantOverrides as Record<string, unknown> | undefined;
+  const variableValues = assistantOverrides?.variableValues as Record<string, unknown> | undefined;
+  const metadata = (variableValues || call?.metadata || message?.metadata) as Record<string, unknown> | undefined;
+  const clinicId = (metadata?.clinicId || metadata?.clinic_id) as string | undefined;
+
+  // 3. Fallback to customer number if needed for testing
+  const callerNumber = customer?.number as string | undefined;
+
+  return {
+    phoneNumber: dialedNumber || callerNumber,
+    clinicId,
+  };
+}
+
+/**
+ * Resolves Clinic instance from body or defaults.
+ */
+async function resolveClinicForRequest(body: Record<string, unknown>) {
+  const { phoneNumber, clinicId } = extractPhoneNumberOrClinic(body);
+
+  if (clinicId) {
+    const clinicById = await prisma.clinic.findUnique({
+      where: { id: clinicId },
+    });
+    if (clinicById) return clinicById;
+  }
+
+  if (phoneNumber) {
+    const clinicByPhone = await findClinicByPhoneNumber(phoneNumber);
+    if (clinicByPhone) return clinicByPhone;
+  }
+
+  return getDefaultClinic();
+}
+
+/**
+ * Handles assistant-request: dynamically builds prompt and config for the resolved clinic.
+ */
+async function handleAssistantRequest(body: Record<string, unknown>, res: Response): Promise<void> {
+  try {
+    const clinic = await resolveClinicForRequest(body);
+    const { prompt, voiceId, clinicName } = await buildSystemPromptDetails(clinic.id);
+
+    console.log(
+      `[vapi] assistant-request resolved for clinic: ${clinicName} (${clinic.id}, phone: ${clinic.phoneNumber})`,
+    );
+
+    const assistantConfig: Record<string, unknown> = {
+      model: {
+        messages: [
+          {
+            role: 'system',
+            content: prompt,
+          },
+        ],
+      },
+    };
+
+    if (voiceId) {
+      assistantConfig.voice = {
+        provider: '11labs',
+        voiceId,
+      };
+    }
+
+    res.status(200).json({
+      assistant: assistantConfig,
+    });
+  } catch (error) {
+    console.error('[vapi] Error handling assistant-request:', error);
+    res.status(200).json({});
+  }
+}
+
+/**
  * Handles tool-calls message type.
- * Dispatches to the appropriate tool handler based on function name.
+ * Dispatches to the appropriate tool handler based on function name and tenant clinicId.
  */
 async function handleToolCalls(body: Record<string, unknown>, res: Response): Promise<void> {
   const message = body?.message as Record<string, unknown> | undefined;
@@ -109,6 +191,9 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
     res.status(200).json({ results: [] });
     return;
   }
+
+  const clinic = await resolveClinicForRequest(body);
+  const clinicId = clinic.id;
 
   const results = await Promise.all(
     toolCallList.map(async (toolCall) => {
@@ -129,34 +214,36 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
         args = functionCall.arguments;
       }
 
-      console.log(`[vapi] Executing tool: ${functionName} (id: ${toolCallId})`);
+      console.log(
+        `[vapi] Executing tool: ${functionName} (id: ${toolCallId}, clinicId: ${clinicId})`,
+      );
 
       let resultText = '';
 
       switch (functionName) {
         case 'check_availability':
         case 'checkAvailability':
-          resultText = await handleCheckAvailability(args);
+          resultText = await handleCheckAvailability(args, clinicId);
           break;
 
         case 'book_appointment':
         case 'bookAppointment':
-          resultText = await handleBookAppointment(args, callId);
+          resultText = await handleBookAppointment(args, callId, clinicId);
           break;
 
         case 'lookup_appointment':
         case 'lookupAppointment':
-          resultText = await handleLookupAppointment(args);
+          resultText = await handleLookupAppointment(args, clinicId);
           break;
 
         case 'cancel_appointment':
         case 'cancelAppointment':
-          resultText = await handleCancelAppointment(args);
+          resultText = await handleCancelAppointment(args, clinicId);
           break;
 
         case 'reschedule_appointment':
         case 'rescheduleAppointment':
-          resultText = await handleRescheduleAppointment(args);
+          resultText = await handleRescheduleAppointment(args, clinicId);
           break;
 
         case 'transfer_call':
@@ -182,7 +269,7 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
 
 /**
  * Handles end-of-call-report.
- * Saves summary, category, transcript, and recording to CallLog.
+ * Saves summary, category, transcript, and recording to CallLog linked to resolved clinic.
  */
 async function handleEndOfCallReport(body: Record<string, unknown>): Promise<void> {
   try {
@@ -223,7 +310,7 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
 
     const summary = `Kategori: ${category}. ${rawSummary.trim()}`;
 
-    const clinic = await getDefaultClinic();
+    const clinic = await resolveClinicForRequest(body);
 
     const callLog = await prisma.callLog.upsert({
       where: { vapiCallId },
@@ -243,7 +330,9 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
       },
     });
 
-    console.log(`[vapi] CallLog saved: ${callLog.id} (callId: ${vapiCallId}, category: ${category})`);
+    console.log(
+      `[vapi] CallLog saved: ${callLog.id} (clinic: ${clinic.name}, callId: ${vapiCallId}, category: ${category})`,
+    );
   } catch (error) {
     console.error('[vapi] Error saving end-of-call-report:', error);
   }

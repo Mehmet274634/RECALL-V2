@@ -1,7 +1,32 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 2 — Vapi Sistem Prompt Optimizasyonu & 112 Acil Güvenlik Triage Tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Faz 2 — Çoklu Klinik Dinamik Sistem Promptu Mimarisi Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 2: Çoklu Klinik (Multi-tenant) Dinamik Sistem Promptu Mimarisi
+
+**Ne yapıldı:**
+1. **Şema Genişletmesi (`Clinic` Modeli & Neon Migration):**
+   - `prisma/schema.prisma` dosyasındaki `Clinic` modeline `greetingMessage`, `specialInstructions`, `cancellationPolicyHours` (default 2), ve `voiceId` alanları eklendi.
+   - `20260927141634_add_clinic_prompt_fields` migration'ı hem lokal hem üretim (Neon) veritabanına uygulandı ve Prisma Client güncellendi.
+2. **Dinamik Prompt Oluşturucu (`buildSystemPromptDetails`):**
+   - `apps/backend/src/lib/vapi/system-prompt.ts` statik yapıdan arındırıldı.
+   - Sabit iskelet (112 acil durum triage'ı, şeffaflık, samimi Türkçe konuşma kuralları ve tool adımları) %100 korunarak, kliniğin hekim kadrosu, uzmanlıkları, karşılama mesajı, iptal politikası ve özel duyuruları veritabanından dinamik olarak enjekte edildi.
+3. **Vapi Webhook Tenant Routing:**
+   - `server-handler.ts` içerisinde aranan telefon numarası (`call.phoneNumber` veya `phoneNumber.number`) veya `metadata.clinicId` üzerinden dinamik klinik çözümü (`resolveClinicForRequest`) kuruldu.
+   - `assistant-request`: Kliniğe özel üretilmiş dinamik sistem promptu ve varsa ses kimliği (`voiceId`) Vapi'ye döndürüldü.
+   - `tool-calls`: Çözülen `clinicId` tüm tool handler'lara (`checkAvailability`, `bookAppointment`, `lookupAppointment`, `cancelAppointment`, `rescheduleAppointment`) delege edildi.
+   - `end-of-call-report`: Çağrı logu doğru kliniğe bağlandı.
+4. **Çoklu Klinik Test Doğrulaması:**
+   - İkinci test kliniği ("Anadolu Tıp Merkezi", +902164440202, Dermatoloji & Göz hekimleri, 4 saat iptal kuralı, SGK ve otopark özel talimatları) veritabanına eklendi.
+   - `scripts/test-dynamic-prompts.ts` ile simülasyon çalıştırıldı:
+     - Recall Sağlık Kliniği ve Anadolu Tıp Merkezi için üretilen promptlar karşılaştırıldı.
+     - Sabit iskeletin her ikisinde de eksiksiz korunduğu, her kliniğin kendi doktorlarını ve kurallarını doğru aldığı ve sıfır veri sızıntısı olduğu doğrulandı.
+5. **Belgeleme:**
+   - `ADR-016` [DECISIONS.md](file:///c:/Users/ev/Desktop/RECALL%20V2/DECISIONS.md) dosyasına eklendi.
+   - [ARCHITECTURE.md](file:///c:/Users/ev/Desktop/RECALL%20V2/ARCHITECTURE.md) güncellendi.
 
 ---
 

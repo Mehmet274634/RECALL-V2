@@ -449,6 +449,42 @@ Faz 1'de Vapi asistanı ("Recall Klinik Sekreteri") backend tool-calling (`check
 
 ---
 
+## ADR-016: Çoklu Klinik (Multi-tenant) Dinamik Sistem Promptu Mimarisi
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+ADR-015'te tek bir klinik (Recall Sağlık Kliniği) için statik bir sistem promptu oluşturulmuştu. Ancak RECALL'in çoklu klinik (multi-tenant SaaS) satış modelinde her yeni klinik için Vapi üzerinde ayrı ayrı asistanlar kopyalamak yönetim, bakım ve maliyet açısından sürdürülemezdi.
+Hedef: Tek bir merkezi Vapi asistanı üzerinden, gelen çağrının hedef telefon numarasına (`call.phoneNumber` veya `phoneNumber.number`) veya `metadata.clinicId` değerine göre ilgili kliniğin dinamik sistem promptunu milisaniyeler içinde inşa edip dönen bir altyapı kurmak.
+
+**Karar:**
+1. **Şema Genişletmesi (`Clinic` Modeli):**
+   - `prisma/schema.prisma` içine klinik bazında özelleştirilebilir 4 yeni alan eklendi:
+     - `greetingMessage`: Kliniğe özel sesli karşılama cümlesi.
+     - `specialInstructions`: Sigorta, belge, otopark, randevuya erken gelme gibi klinik özel kuralları (`@db.Text`).
+     - `cancellationPolicyHours`: İptal ve erteleme için gereken minimum ön bildirim saati (`Int @default(2)`).
+     - `voiceId`: İlgili kliniğin tercih ettiği Vapi/ElevenLabs ses kimliği.
+2. **Sabit İskelet vs. Dinamik Alan Ayrımı (`buildSystemPrompt`):**
+   - `apps/backend/src/lib/vapi/system-prompt.ts` statik bir metin yerine `buildSystemPromptDetails(clinicId)` fonksiyonuna dönüştürüldü.
+   - **Sabit Mimari İskelet (Değişmez):** Tıbbi acil durum triage'ı (112 Acil Çağrı Merkezi yönlendirmesi), yapay zeka şeffaflığı ve kimlik beyanı, doğal Türkçe konuşma ve nezaket ilkeleri, adım adım tool çağırma akışları (`check_availability`, `book_appointment`, `cancel_appointment`, `reschedule_appointment`, `transfer_call`). Bu katman marka güvenliği ve klinik regülasyonları için tüm kliniklerde %100 aynı kalır.
+   - **Dinamik Enjekte Edilen Alanlar:** Klinik adı, karşılama metni, o kliniğin hekim kadrosu ve çalışma saatleri, muayene edilen branşlar, iptal saati politikası ve varsa "KLİNİĞE ÖZEL KURALLAR VE DUYURULAR" bölümü.
+3. **Vapi Webhook Tenant Routing (`server-handler.ts`):**
+   - `assistant-request`: Aranan numara üzerinden `Clinic` kaydı bulunur, `buildSystemPromptDetails` ile üretilen prompt ve varsa `voiceId` Vapi'ye döndürülür.
+   - `tool-calls`: Aranan numara / call metadata üzerinden `clinicId` çözülür; `checkAvailability`, `bookAppointment`, `lookupAppointment`, `cancelAppointment`, `rescheduleAppointment` fonksiyonlarının tamamına bu `clinicId` parametre olarak geçirilir.
+   - `end-of-call-report`: Çağrı logu doğru kliniğin `clinicId` değerine bağlanarak kaydedilir.
+
+**Alternatifler:**
+- *Her klinik için Vapi panelinden ayrı asistan açmak:* Kod güncellemelerinde (örn. tool şeması veya acil durum kuralı değiştiğinde) onlarca asistanı elle güncellemek gerekir, hataya son derece açıktır.
+- *Promptu tamamen serbest bırakmak (kliniğin kendi promptunu yazması):* Tıbbi güvenlik (112 triage) ve tool çalıştırma garantisi kaybolur; asistan halüsinasyon görebilir.
+
+**Sonuçlar:**
+- (+) Tek bir Vapi asistanı sonsuz sayıda kliniğe hizmet verebilir.
+- (+) Sıfır veri sızıntısı: İki farklı klinik arasında hekim, branş veya kural sızıntısı yaşanmadığı otomatik testlerle doğrulandı.
+- (+) Hekim mesai saatleri veya klinik kuralları veritabanında güncellendiği anda bir sonraki çağrıda prompt anında güncel halini alır; hiçbir deploy veya manuel ayar gerekmez.
+
+---
+
 <!--
 YENİ ADR EKLEME ŞABLONU:
 

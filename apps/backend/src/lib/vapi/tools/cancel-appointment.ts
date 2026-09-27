@@ -15,7 +15,7 @@ const cancelAppointmentSchema = z.object({
 /**
  * Tool handler: cancel_appointment / cancelAppointment
  */
-export async function handleCancelAppointment(args: unknown): Promise<string> {
+export async function handleCancelAppointment(args: unknown, clinicId?: string): Promise<string> {
   const parsed = cancelAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu iptali için lütfen telefon numaranızı veya randevu bilginizi belirtiniz.';
@@ -37,6 +37,7 @@ export async function handleCancelAppointment(args: unknown): Promise<string> {
 
   try {
     const result = await cancelAppointment({
+      clinicId,
       appointmentId: appointmentId || appointment_id,
       patientPhone: patientPhone || patient_phone,
       patientName: patientName || patient_name,

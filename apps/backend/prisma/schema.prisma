@@ -12,16 +12,20 @@ datasource db {
 }
 
 model Clinic {
-  id          String        @id @default(cuid())
-  name        String
-  phoneNumber String        @unique @map("phone_number")
-  timezone    String        @default("Europe/Istanbul")
-  doctors     Doctor[]
-  patients    Patient[]
-  appointments Appointment[]
-  callLogs    CallLog[]
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id                      String        @id @default(cuid())
+  name                    String
+  phoneNumber             String        @unique @map("phone_number")
+  timezone                String        @default("Europe/Istanbul")
+  greetingMessage         String?       @map("greeting_message")
+  specialInstructions     String?       @db.Text @map("special_instructions")
+  cancellationPolicyHours Int           @default(2) @map("cancellation_policy_hours")
+  voiceId                 String?       @map("voice_id")
+  doctors                 Doctor[]
+  patients                Patient[]
+  appointments            Appointment[]
+  callLogs                CallLog[]
+  createdAt               DateTime      @default(now()) @map("created_at")
+  updatedAt               DateTime      @updatedAt @map("updated_at")
 
   @@map("clinics")
 }

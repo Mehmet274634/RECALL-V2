@@ -21,7 +21,7 @@ const rescheduleAppointmentSchema = z.object({
 /**
  * Tool handler: reschedule_appointment / rescheduleAppointment
  */
-export async function handleRescheduleAppointment(args: unknown): Promise<string> {
+export async function handleRescheduleAppointment(args: unknown, clinicId?: string): Promise<string> {
   const parsed = rescheduleAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu saatinizi değiştirmek için lütfen yeni tarih ve saati belirtiniz.';
@@ -56,6 +56,7 @@ export async function handleRescheduleAppointment(args: unknown): Promise<string
 
   try {
     const result = await rescheduleAppointment({
+      clinicId,
       appointmentId: appointmentId || appointment_id,
       patientPhone: patientPhone || patient_phone,
       patientName: patientName || patient_name,

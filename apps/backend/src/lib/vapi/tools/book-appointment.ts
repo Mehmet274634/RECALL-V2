@@ -18,7 +18,11 @@ const bookAppointmentSchema = z.object({
 /**
  * Tool handler: book_appointment / bookAppointment
  */
-export async function handleBookAppointment(args: unknown, callId?: string): Promise<string> {
+export async function handleBookAppointment(
+  args: unknown,
+  callId?: string,
+  clinicId?: string,
+): Promise<string> {
   const parsed = bookAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu oluşturabilmek için lütfen adınızı, telefon numaranızı, randevu tarihi ve saatini belirtiniz.';
@@ -59,6 +63,7 @@ export async function handleBookAppointment(args: unknown, callId?: string): Pro
 
   try {
     const result = await bookAppointment({
+      clinicId,
       patientName: resolvedName,
       patientPhone: resolvedPhone,
       doctorName: doctorName || doctor_name,

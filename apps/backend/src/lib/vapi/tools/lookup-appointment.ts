@@ -13,7 +13,7 @@ const lookupAppointmentSchema = z.object({
 /**
  * Tool handler: lookup_appointment / lookupAppointment
  */
-export async function handleLookupAppointment(args: unknown): Promise<string> {
+export async function handleLookupAppointment(args: unknown, clinicId?: string): Promise<string> {
   const parsed = lookupAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı veya adınızı belirtiniz.';
@@ -33,6 +33,7 @@ export async function handleLookupAppointment(args: unknown): Promise<string> {
 
   try {
     const result = await lookupAppointment({
+      clinicId,
       patientPhone: resolvedPhone || undefined,
       patientName: resolvedName || undefined,
     });
