@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> **Son güncelleme:** 2026-09-27 (ADR-008 eklendi)
+> **Son güncelleme:** 2026-09-27 (ADR-009 eklendi)
 > **Bu dosya:** Mimari/teknik kararların ADR (Architecture Decision Record) formatında gerekçeli kaydıdır. Kararlar silinmez; durumu değişirse (örn. "değiştirildi") yeni bir ADR eklenir ve eskisi "değiştirildi" olarak işaretlenip yeni olana referans verir.
 
 ---
@@ -215,6 +215,30 @@ Lokal geliştirmede `tsx watch src/index.ts` ile geleneksel Express sunucusu ça
 - (–) Serverless'ın cold start süresi var (ilk istek ~1-3s); Vapi'nin tool-call'ları senkron yanıt beklediği için bu gecikme fark edilebilir — Vercel'in "Fluid Functions" veya minimum instance ayarı ile ileride azaltılabilir.
 - (–) Express'in `app.listen()` çağrısı serverless'ta çalışmaz; `src/index.ts`'teki `listen()` sadece lokal geliştirme için aktif, `api/index.ts` sadece app'i export eder.
 - Bu karar, ADR-007'deki açık noktayı kapatır.
+
+---
+
+## ADR-009: Neon entegrasyonu için veritabanı bağlantı değişkeni olarak DATABASEV2_URL kullanılması
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+Vercel ve Neon entegrasyonu kurulurken `DATABASE_URL` ortam değişkeni isim çakışması (name collision) nedeniyle Neon entegrasyonu `DATABASEV2_URL` ismiyle kurulmuştur.
+
+**Karar:**
+Neon entegrasyonu `DATABASEV2_URL` ismiyle kurulduğu için (`DATABASE_URL` isim çakışması nedeniyle), tüm referanslar buna göre güncellendi:
+- `apps/backend/prisma/schema.prisma` dosyasında datasource url referansı `env("DATABASEV2_URL")` olarak güncellendi.
+- `apps/backend/.env` ve `apps/backend/.env.example` dosyalarındaki anahtar `DATABASEV2_URL` olarak değiştirildi.
+- Kod ve dokümantasyon referansları `DATABASEV2_URL` ile uyumlu hale getirildi.
+
+**Alternatifler:**
+- Vercel'deki entegrasyonu silip `DATABASE_URL` adını zorlamak: Gereksiz risk ve operasyonel gecikme; Prisma `env("DATABASEV2_URL")` ile aynı şekilde sorunsuz çalışır.
+
+**Sonuçlar:**
+- (+) Vercel / Neon otomatik ortam değişkeniyle doğrudan uyum sağlandı.
+- (+) Ortam değişkeni isim çakışması çözüldü.
+- (–) Geliştiricilerin lokal ortamda `.env` içine `DATABASEV2_URL` girmesi gerekir (`.env.example` güncellendi).
 
 ---
 

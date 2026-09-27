@@ -18,7 +18,7 @@
 - [ ] İki ayrı Vercel projesinin oluşturulması ve GitHub repo'suna bağlanması: `apps/frontend` (statik Vite build) ve `apps/backend` (Node API)
 - [x] Express'in Vercel serverless fonksiyon modeline nasıl uyarlanacağının netleştirilmesi (bkz. `DECISIONS.md#adr-008` — `@vercel/node` catch-all handler kuruldu)
 - [x] ESLint + Prettier konfigürasyonunun her iki pakette de kurulması (bkz. `CONVENTIONS.md`)
-- [ ] Vercel Postgres (veya Neon) veritabanının oluşturulması ve `DATABASE_URL`'in `apps/backend` Vercel proje env değişkeni olarak eklenmesi
+- [ ] Vercel Postgres (veya Neon) veritabanının oluşturulması ve `DATABASEV2_URL`'in `apps/backend` Vercel proje env değişkeni olarak eklenmesi
 - [x] Prisma kurulumu (`apps/backend/prisma`) ve ilk şemanın (`Clinic`, `Doctor`, `Patient`, `Appointment`, `CallLog` modelleri) yazılması
 - [ ] İlk migration'ın çalıştırılması (`pnpm --filter backend prisma migrate dev --name init`) - (Veritabanı bekleniyor)
 - [ ] Vapi hesabının açılması, bir test **assistant**'ının oluşturulması (model/voice/transcriber seçimi ile)

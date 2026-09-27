@@ -94,7 +94,7 @@
 | **Twilio (Faz 3+, opsiyonel telefon numarası sağlayıcısı)** | SMS bildirimleri; ayrıca Vapi'ye kendi Twilio numaranızı bağlamak isterseniz telefon hattı sağlayıcısı olarak da kullanılabilir | `apps/backend/src/lib/notifications`, Vapi phone number import |
 | **Resend (Faz 3+)** | Email bildirimleri | `apps/backend/src/lib/notifications` |
 
-> Ortam değişkenleri (`VAPI_API_KEY`, `VAPI_SERVER_SECRET`, `DATABASE_URL`, `CLERK_SECRET_KEY`, frontend tarafı için `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_API_BASE_URL` vb.) ilgili Vercel proje ayarlarında (frontend/backend ayrı ayrı) tutulur, koda asla hardcode edilmez. `VAPI_SERVER_SECRET`, gelen webhook/tool-call isteklerinin gerçekten Vapi'den geldiğini doğrulamak için kullanılır.
+> Ortam değişkenleri (`VAPI_API_KEY`, `VAPI_SERVER_SECRET`, `DATABASEV2_URL`, `CLERK_SECRET_KEY`, frontend tarafı için `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_API_BASE_URL` vb.) ilgili Vercel proje ayarlarında (frontend/backend ayrı ayrı) tutulur, koda asla hardcode edilmez. `VAPI_SERVER_SECRET`, gelen webhook/tool-call isteklerinin gerçekten Vapi'den geldiğini doğrulamak için kullanılır.
 
 ## 5. Kritik Tasarım Kararları (özet)
 
