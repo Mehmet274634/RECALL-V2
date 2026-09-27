@@ -218,27 +218,38 @@ Lokal geliştirmede `tsx watch src/index.ts` ile geleneksel Express sunucusu ça
 
 ---
 
-## ADR-009: Neon entegrasyonu için veritabanı bağlantı değişkeni olarak DATABASEV2_URL kullanılması
+## ADR-009: Neon entegrasyonu için DATABASEV2_DATABASE_URL ve directUrl (UNPOOLED) kullanımı
 
 - **Tarih:** 2026-09-27
 - **Durum:** ✅ Kabul edildi
 
 **Bağlam:**
-Vercel ve Neon entegrasyonu kurulurken `DATABASE_URL` ortam değişkeni isim çakışması (name collision) nedeniyle Neon entegrasyonu `DATABASEV2_URL` ismiyle kurulmuştur.
+Vercel ve Neon entegrasyonu kurulurken varsayılan `DATABASE_URL` ortam değişkeni ismiyle çakışma yaşandığından entegrasyon `DATABASEV2` prefix'i ile yapılandırılmıştır. Neon bu prefix altında iki temel bağlantı dizesi sağlar:
+1. `DATABASEV2_DATABASE_URL`: Connection pooler (PgBouncer) arkasındaki havuzlu bağlantı (sunucu/serverless istekleri için).
+2. `DATABASEV2_DATABASE_URL_UNPOOLED`: Doğrudan (unpooled) PostgreSQL bağlantısı.
+
+Prisma ORM, connection pooler arkasından migration (`prisma migrate`) çalıştırırken transaction advisory lock'lar ve şema değişiklikleri nedeniyle doğrudan bağlantıya ihtiyaç duyar. Neon + Vercel entegrasyonlarında standart pratik `directUrl` tanımlamaktır.
 
 **Karar:**
-Neon entegrasyonu `DATABASEV2_URL` ismiyle kurulduğu için (`DATABASE_URL` isim çakışması nedeniyle), tüm referanslar buna göre güncellendi:
-- `apps/backend/prisma/schema.prisma` dosyasında datasource url referansı `env("DATABASEV2_URL")` olarak güncellendi.
-- `apps/backend/.env` ve `apps/backend/.env.example` dosyalarındaki anahtar `DATABASEV2_URL` olarak değiştirildi.
-- Kod ve dokümantasyon referansları `DATABASEV2_URL` ile uyumlu hale getirildi.
+`apps/backend/prisma/schema.prisma` dosyasındaki `datasource db` bloğu hem havuzlu URL'i hem de `directUrl`'i kullanacak şekilde yapılandırıldı:
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASEV2_DATABASE_URL")
+  directUrl = env("DATABASEV2_DATABASE_URL_UNPOOLED")
+}
+```
+- `apps/backend/.env` ve `apps/backend/.env.example` dosyalarına `DATABASEV2_DATABASE_URL` ve `DATABASEV2_DATABASE_URL_UNPOOLED` anahtarları eklendi.
+- İlgili tüm dokümantasyon referansları güncellendi.
 
 **Alternatifler:**
-- Vercel'deki entegrasyonu silip `DATABASE_URL` adını zorlamak: Gereksiz risk ve operasyonel gecikme; Prisma `env("DATABASEV2_URL")` ile aynı şekilde sorunsuz çalışır.
+- `directUrl` kullanmamak: Migration'lar connection pooler üzerinden çalıştığında kilitlenme veya "prepared statement" hataları riski oluşur.
+- Değişken adını `DATABASE_URL` yapmak için Vercel entegrasyonunu silip sıfırdan zorlamak: Gereksiz risk ve operasyonel maliyet; `DATABASEV2_*` ile açık ve sorunsuz çalışır.
 
 **Sonuçlar:**
-- (+) Vercel / Neon otomatik ortam değişkeniyle doğrudan uyum sağlandı.
-- (+) Ortam değişkeni isim çakışması çözüldü.
-- (–) Geliştiricilerin lokal ortamda `.env` içine `DATABASEV2_URL` girmesi gerekir (`.env.example` güncellendi).
+- (+) Serverless API istekleri havuzlu bağlantıyı (`url`), Prisma migration'ları doğrudan bağlantıyı (`directUrl`) kullanarak optimum performansta ve hatasız çalışır.
+- (+) Vercel / Neon otomatik değişken adlandırmasıyla birebir uyum sağlandı.
+- (–) Lokal geliştiricilerin `.env` dosyasında her iki değişkeni de tanımlaması gerekir (`.env.example` güncellendi).
 
 ---
 
