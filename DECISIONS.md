@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> **Son güncelleme:** 2026-09-27 (ADR-012 eklendi — Tenant Fallback Güvenliği, Çapraz Hekim Deadlock Önleme ve Aktif Telefon Doğrulama)
+> **Son güncelleme:** 2026-09-27 (ADR-013 eklendi — Geliştirme Ortamı Klinik Fallback'inin Çift Kilit ile Sertleştirilmesi)
 > **Bu dosya:** Mimari/teknik kararların ADR (Architecture Decision Record) formatında gerekçeli kaydıdır. Kararlar silinmez; durumu değişirse (örn. "değiştirildi") yeni bir ADR eklenir ve eskisi "değiştirildi" olarak işaretlenip yeni olana referans verir.
 
 ---
@@ -349,6 +349,29 @@ ADR-011 sonrasında yapılan ikinci seviye mimari incelemede 3 spesifik risk nok
 - (+) Token'ında klinik bulunmayan kullanıcıların veriye erişimi kesin olarak 403 ile engellendi.
 - (+) Hekimler arası karşılıklı eşzamanlı randevu takaslarında (swap) deadlock yaşanmadığı test edildi.
 - (+) Eksik/hatalı telefon numaraları tüm kanallarda (sesli asistan + web paneli) anında reddedilmektedir.
+
+---
+
+## ADR-013: Geliştirme Ortamı Klinik Fallback'inin Çift Kilit (Double-Gate) ile Sertleştirilmesi
+
+- **Tarih:** 2026-09-27
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+ADR-012 ile production ortamında token'dan klinik çözülemediğinde varsayılan kliniğe düşüş engellenmiş, ancak geliştirme ortamındaki fallback yalnızca `NODE_ENV === 'development'` tekil kontrolüne emanet edilmişti. Bir ortam yapılandırma hatasında (örn. production sunucusunda `NODE_ENV`'in yanlışlıkla development kalması veya tanımsız olması) varsayılan kliniğe yetkisiz bağlanma riski teorik olarak mevcuttu.
+
+**Karar:**
+Geliştirme ortamı klinik fallback mekanizması **çift kilitli (double-gate / fail-safe)** hale getirildi:
+1. Fallback'in tetiklenmesi için iki bağımsız koşulun aynı anda sağlanması zorunlu kılındı:
+   `process.env.NODE_ENV === 'development'` **VE** `process.env.ALLOW_DEV_CLINIC_FALLBACK === 'true'`.
+2. Tek biri dahi eksik, false veya tanımsızsa fallback tamamen devre dışı kalır ve istek `403 Forbidden` ile sonlandırılır.
+3. `.env.example` dosyasında `ALLOW_DEV_CLINIC_FALLBACK=false` olarak belgelendi; production ortam değişkenlerinde (Vercel) bu bayrağın kesinlikle tanımlanmaması kurala bağlandı.
+4. Bu sayede varsayılan davranış "fail-safe" (güvenli tarafta hata veren) yapıya kavuştu.
+
+**Sonuçlar:**
+- (+) `NODE_ENV=development` + `ALLOW_DEV_CLINIC_FALLBACK=true` -> Fallback sadece bu kombinasyonda lokal test için çalışır.
+- (+) `NODE_ENV=development` + `ALLOW_DEV_CLINIC_FALLBACK=false` -> Fallback çalışmaz, 403 Forbidden döner.
+- (+) `NODE_ENV=production` (bayrak ne olursa olsun) -> Fallback asla çalışmaz, 403 Forbidden döner.
 
 ---
 

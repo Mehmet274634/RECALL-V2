@@ -1,7 +1,25 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Faz 1 Review Takip — Tenant Güvenliği, Deadlock Önleme ve Telefon Doğrulama Tamamlandı)
+> **Son güncelleme:** 2026-09-27 (Faz 1 Son Sertleştirme — Çift Kilitli Dev Fallback Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-27 — Faz 1 Son Sertleştirme: Çift Kilitli (Double-Gate) Dev Fallback
+
+**Ne yapıldı:**
+1. **Çift Kilitli Fallback (Fail-Safe Güvenlik):**
+   - `clerk.ts` içindeki geliştirme ortamı fallback'i, tek başına `NODE_ENV === 'development'` kontrolüne güvenmek yerine açık bir ortam bayrağıyla çift kilitli (`process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_CLINIC_FALLBACK === 'true'`) hale getirildi.
+   - Bayraklardan herhangi biri eksik, false veya tanımsızsa istek anında **403 Forbidden** ile reddedilir.
+2. **Ortam Değişkenleri:**
+   - `.env.example` dosyasına `ALLOW_DEV_CLINIC_FALLBACK=false` eklendi; production ortamlarında (Vercel) kesinlikle tanımlanmaması gerektiği belgelendi.
+   - Vercel production ortam değişkenlerinde bu bayrağın bulunmadığı (tanımsız olduğu) teyit edildi.
+3. **Belgeleme & Test:**
+   - `ADR-013` [DECISIONS.md](file:///c:/Users/ev/Desktop/RECALL%20V2/DECISIONS.md) dosyasına eklendi.
+   - `apps/backend/scripts/test-double-gate.ts` ile tüm 3 durum test edildi:
+     - `NODE_ENV=development` + `ALLOW_DEV_CLINIC_FALLBACK=true` -> Fallback başarılı.
+     - `NODE_ENV=development` + `ALLOW_DEV_CLINIC_FALLBACK=false` -> 403 Forbidden ile engellendi.
+     - `NODE_ENV=production` (flag true olsa dahi) -> 403 Forbidden ile engellendi.
 
 ---
 

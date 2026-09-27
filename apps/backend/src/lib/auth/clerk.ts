@@ -71,9 +71,14 @@ export async function requireAuth(
   const secretKey = process.env.CLERK_SECRET_KEY;
   const authHeader = req.headers.authorization;
 
-  // Local development fallback: ONLY active when NODE_ENV === 'development' AND secretKey is missing/placeholder
+  // Double-gated development fallback:
+  // Fail-safe protection: requires BOTH NODE_ENV === 'development' AND ALLOW_DEV_CLINIC_FALLBACK === 'true'.
+  // If either flag is absent or false, fallback is strictly disabled and rejected with 403 Forbidden.
+  const isDevEnv = process.env.NODE_ENV === 'development';
+  const isDevFallbackAllowed = process.env.ALLOW_DEV_CLINIC_FALLBACK === 'true';
+
   if (!secretKey || secretKey === 'placeholder' || secretKey.startsWith('dev-')) {
-    if (process.env.NODE_ENV === 'development') {
+    if (isDevEnv && isDevFallbackAllowed) {
       try {
         const defaultClinic = await getDefaultClinic();
         req.clinicId = defaultClinic.id;
@@ -83,7 +88,9 @@ export async function requireAuth(
         return;
       }
     }
-    res.status(500).json({ error: 'CLERK_SECRET_KEY is not configured on server' });
+    res.status(403).json({
+      error: 'Erişim reddedildi: CLERK_SECRET_KEY yapılandırılmamış veya ALLOW_DEV_CLINIC_FALLBACK bayrağı aktif değil.',
+    });
     return;
   }
 
