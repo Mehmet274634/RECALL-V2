@@ -30,7 +30,7 @@ export interface DoctorInput {
 
 export interface OnboardClinicData {
   clinicName: string;
-  phoneNumber: string;
+  phoneNumber?: string;
   greetingMessage?: string;
   cancellationPolicyHours?: number;
   specialInstructions?: string | null;
@@ -38,13 +38,39 @@ export interface OnboardClinicData {
   doctors: DoctorInput[];
 }
 
+/**
+ * Generates a collision-proof, unmistakable placeholder phone number.
+ * Uses "+90000" (an unallocated, non-routable prefix in Turkey)
+ * combined with a zero-padded counter and database-level uniqueness check.
+ * E.g., +900000000001, +900000000002, etc.
+ */
+export async function generatePlaceholderPhoneNumber(): Promise<string> {
+  const count = await prisma.clinic.count();
+  let candidate = `+90000${String(count + 1).padStart(7, '0')}`;
+  let exists = await prisma.clinic.findUnique({ where: { phoneNumber: candidate } });
+  let offset = 1;
+
+  while (exists) {
+    candidate = `+90000${String(count + 1 + offset).padStart(7, '0')}`;
+    exists = await prisma.clinic.findUnique({ where: { phoneNumber: candidate } });
+    offset++;
+  }
+
+  return candidate;
+}
+
 export async function onboardClinic(data: OnboardClinicData) {
   const defaultGreeting = `Merhaba, ${data.clinicName}'na hoş geldiniz. Ben yapay zeka asistanınız, randevunuz için nasıl yardımcı olabilirim?`;
+
+  let phoneNumber = data.phoneNumber?.trim();
+  if (!phoneNumber || phoneNumber.toLowerCase() === 'placeholder') {
+    phoneNumber = await generatePlaceholderPhoneNumber();
+  }
 
   const createdClinic = await prisma.clinic.create({
     data: {
       name: data.clinicName,
-      phoneNumber: data.phoneNumber,
+      phoneNumber,
       timezone: 'Europe/Istanbul',
       greetingMessage: data.greetingMessage?.trim() || defaultGreeting,
       cancellationPolicyHours: data.cancellationPolicyHours ?? 2,
@@ -126,16 +152,14 @@ async function runInteractiveWizard() {
 
     // 2. Phone Number
     console.log('\nℹ️ Telefon Numarası Notu: Şimdilik geçici/placeholder bir numara girebilirsiniz.');
-    console.log('   Netgsm / Vapi santral hattı tahsis edildiğinde güncellenecektir.');
-    let phoneNumber = '';
-    while (!phoneNumber) {
-      phoneNumber = await promptUser(
-        rl,
-        '2. Santral Telefon Numarası (örn: +902123330303)',
-        `+90212999${Math.floor(1000 + Math.random() * 9000)}`,
-      );
-      if (!phoneNumber) console.log('⚠️ Telefon numarası giriniz.');
-    }
+    console.log('   (Varsayılan olarak güvenli +90000XXXXXXX tahsis edilecektir, Netgsm hazır olduğunda güncellenebilir).');
+    const suggestedPlaceholder = await generatePlaceholderPhoneNumber();
+    const phoneInput = await promptUser(
+      rl,
+      '2. Santral Telefon Numarası (boş bırakırsanız placeholder atanır)',
+      suggestedPlaceholder,
+    );
+    const phoneNumber = phoneInput.trim() || suggestedPlaceholder;
 
     // 3. Greeting Message
     const defaultGreeting = `Merhaba, ${clinicName}'na hoş geldiniz. Ben yapay zeka asistanınız, randevunuz için nasıl yardımcı olabilirim?`;
