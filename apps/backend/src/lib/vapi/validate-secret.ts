@@ -24,7 +24,7 @@ function safeCompare(a: string, b: string): boolean {
  * If validation fails, returns 401 — no further processing occurs.
  */
 export function validateVapiSecret(req: Request, res: Response, next: NextFunction): void {
-  const serverSecret = process.env.VAPI_SERVER_SECRET;
+  const serverSecret = process.env.VAPI_SERVER_SECRET?.trim();
 
   if (!serverSecret) {
     console.error('[vapi] VAPI_SERVER_SECRET is not configured — rejecting request');

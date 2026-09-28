@@ -48,6 +48,7 @@ const prisma = new PrismaClient();
 let serverProcess: ChildProcess | null = null;
 let apptA_id = '';
 let apptB_id = '';
+const serverLogs: string[] = [];
 
 // ── Counter ────────────────────────────────────────────────────────────────────
 let passed = 0; let failed = 0; let skipped = 0;
@@ -99,10 +100,13 @@ async function startServer(): Promise<boolean> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => { console.warn('  ⚠️  Sunucu başlatma zaman aşımı'); resolve(false); }, 30_000);
     serverProcess!.stdout?.on('data', (chunk: Buffer) => {
-      if (chunk.toString().includes('Server running')) { clearTimeout(timeout); resolve(true); }
+      const msg = chunk.toString();
+      serverLogs.push(msg);
+      if (msg.includes('Server running')) { clearTimeout(timeout); resolve(true); }
     });
     serverProcess!.stderr?.on('data', (chunk: Buffer) => {
       const msg = chunk.toString();
+      serverLogs.push(msg);
       if (!msg.includes('[sentry]') && !msg.includes('ExperimentalWarning')) { process.stderr.write(`[srv] ${msg}`); }
     });
     serverProcess!.on('error', () => { clearTimeout(timeout); resolve(false); });
@@ -649,6 +653,53 @@ async function test4_ConflictDetection() {
     conflictWithAlternates.success === false &&
       conflictWithAlternates.message.includes('Müsait alternatif saatler:'),
     '4o-7. book_appointment çakışmada hastaya alternatif saat önerisi sundu'
+  );
+
+  // 5. NO_SHOW randevu slotunun dolu sayılması testi
+  await prisma.appointment.create({
+    data: {
+      clinicId: CLINIC_A_ID,
+      doctorId: DOCTOR_A_ID,
+      patientId: patientA!.id,
+      startsAt: parseIstanbulDate('2026-12-07T15:00:00+03:00'),
+      endsAt: parseIstanbulDate('2026-12-07T15:30:00+03:00'),
+      status: 'NO_SHOW',
+    },
+  });
+
+  const availAfterNoShow = await checkAvailability({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    date: '2026-12-07',
+  });
+  assert(
+    !availAfterNoShow.availableSlots.includes('15:00'),
+    '4o-8. check_availability: NO_SHOW durumundaki randevu slotunu dolu gördü (status not CANCELLED)'
+  );
+
+  // 6. Numarasız ve metadata'sız çağrıda güvenlik fallback logu kontrolü
+  const secretKey = process.env.VAPI_SERVER_SECRET || 'dev-secret-change-me';
+  const rVapiNoPhone = await fetch(`${BASE}/api/vapi/server`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${secretKey}`,
+    },
+    body: JSON.stringify({
+      message: {
+        type: 'assistant-request',
+      },
+    }),
+  });
+  assert(rVapiNoPhone.status === 200, '4o-9. Numarasız/metadata\'sız Vapi isteği 200 döndü (fallback)');
+
+  await wait(300);
+  const hasFallbackWarn = serverLogs.some((l) =>
+    l.includes('[vapi] Inbound request missing phoneNumber and clinicId metadata — falling back to default clinic'),
+  );
+  assert(
+    hasFallbackWarn,
+    '4o-10. Numarasız çağrıda beklenen güvenlik fallback logu yazıldı (klinik adı ifşa edilmeden)'
   );
 
   // Clean up 2026-12-07 appointments
