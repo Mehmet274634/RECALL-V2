@@ -21,9 +21,12 @@
    - Formüller:
      - No-Show Oranı: `Gelmedi / (Tamamlandı + Gelmedi) * 100` (Payda 0 ise %0.0).
      - İptal Oranı: `İptal / Toplam * 100`.
-     - Çağrı Randevu Dönüşüm Oranı: `Vapi Randevuları / Toplam Çağrı * 100`.
+     - Çağrı Randevu Dönüşüm Oranı: `Dönemde Oluşturulan Vapi Randevuları (created_at bazlı) / Toplam Çağrı * 100`. Gelecek tarihli randevuyu bugün alan çağrı bugünün dönüşümüne başarıyla yazılır.
+     - Ortalama Çağrı Süresi: Ölçülemeyen / boş çağrılar ortalamayı bozmaması için `duration_seconds > 0` filtresiyle hesaplanır; kategorisi olmayanlar `Belirtilmemiş` olarak gruplanır.
      - Hekim Doluluk Oranı: Hekimin çalışma saatleri JSON'ından aktif mesai günleri taranıp toplam slot kapasitesi hesaplandı (`Aktif Randevu / Toplam Slot * 100`).
    - `GET /api/admin/analytics/clinics-overview`: Admin için platform geneli son 30 gün randevu ve çağrı hacmi karşılaştırma rotası (`requireAdmin` korumalı).
+   - Vapi `end-of-call-report` webhook'u (`server-handler.ts`) gelen çağrı süresi (`durationSeconds`) ve analiz kategorisini (`category`) CallLog tablosuna otomatik yazacak şekilde güçlendirildi.
+   - `test-analytics-verification.ts`: Tamamen izole geçici test klinikleri (`Automated Test Clinic`) açıp test sonrasında `finally` bloğunda kendi verisini %100 temizleyecek şekilde modernize edildi; canlı klinik verilerinin kirlenmesi engellendi.
 3. **Frontend Raporlar Sayfası (`/dashboard/reports`) & Admin Karşılaştırma Tablosu:**
    - `recharts` grafik kütüphanesi entegre edildi.
    - Sol menüye "Raporlar" sekmesi (`BarChart3` ikonu) ve `/dashboard/reports` rotası eklendi.

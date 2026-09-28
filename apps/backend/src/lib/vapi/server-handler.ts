@@ -324,6 +324,34 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
 
     const summary = `Kategori: ${category}. ${rawSummary.trim()}`;
 
+    // Extract duration in seconds from Vapi end-of-call-report payload
+    let durationSeconds: number | null = null;
+    if (typeof call?.duration === 'number') {
+      durationSeconds = Math.round(call.duration);
+    } else if (typeof message?.duration === 'number') {
+      durationSeconds = Math.round(message.duration as number);
+    } else if (typeof (call as Record<string, unknown> | undefined)?.durationSeconds === 'number') {
+      durationSeconds = Math.round((call as Record<string, unknown>).durationSeconds as number);
+    } else if (call?.startedAt && call?.endedAt) {
+      durationSeconds = Math.max(
+        0,
+        Math.round(
+          (new Date(call.endedAt as string).getTime() -
+            new Date(call.startedAt as string).getTime()) /
+            1000,
+        ),
+      );
+    } else if (message?.startedAt && message?.endedAt) {
+      durationSeconds = Math.max(
+        0,
+        Math.round(
+          (new Date(message.endedAt as string).getTime() -
+            new Date(message.startedAt as string).getTime()) /
+            1000,
+        ),
+      );
+    }
+
     const clinic = await resolveClinicForRequest(body);
 
     const callLog = await prisma.callLog.upsert({
@@ -333,6 +361,8 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
         recordingUrl,
         summary,
         endedReason,
+        category,
+        durationSeconds: durationSeconds !== null ? durationSeconds : undefined,
       },
       create: {
         clinicId: clinic.id,
@@ -341,11 +371,13 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
         recordingUrl,
         summary,
         endedReason,
+        category,
+        durationSeconds: durationSeconds !== null ? durationSeconds : 0,
       },
     });
 
     console.log(
-      `[vapi] CallLog saved: ${callLog.id} (clinic: ${clinic.name}, callId: ${vapiCallId}, category: ${category})`,
+      `[vapi] CallLog saved: ${callLog.id} (clinic: ${clinic.name}, callId: ${vapiCallId}, category: ${category}, duration: ${durationSeconds}s)`,
     );
   } catch (error) {
     console.error('[vapi] Error saving end-of-call-report:', error);

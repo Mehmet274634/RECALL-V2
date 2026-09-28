@@ -378,13 +378,14 @@ export async function getClinicAnalyticsSummary(
   }
 
   // 8. Call Metrics (CallLog)
+  // Exclude 0 or null durations from average calculation so unmeasured calls don't distort average
   const callTotalsRaw: Array<{
     totalCalls: number;
     averageDurationSeconds: number;
   }> = await prisma.$queryRaw`
     SELECT
       COUNT(*)::int AS "totalCalls",
-      COALESCE(ROUND(AVG(duration_seconds)), 0)::int AS "averageDurationSeconds"
+      COALESCE(ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds > 0)), 0)::int AS "averageDurationSeconds"
     FROM call_logs
     WHERE clinic_id = ${clinicId}
       AND created_at >= ((${from}::timestamp AT TIME ZONE ${tz}) AT TIME ZONE 'UTC')
@@ -393,13 +394,25 @@ export async function getClinicAnalyticsSummary(
 
   const totalCalls = callTotalsRaw[0]?.totalCalls || 0;
   const averageDurationSeconds = callTotalsRaw[0]?.averageDurationSeconds || 0;
-  const conversionRate =
-    totalCalls > 0 ? Math.round((vapiAiCount / totalCalls) * 1000) / 10 : 0;
 
-  // Categories Breakdown
+  // Conversion rate: Vapi appointments CREATED during this period (based on created_at, not future starts_at)
+  // Calling today for an appointment next week should count towards today's call conversion.
+  const vapiApptsCreatedRaw: Array<{ count: number }> = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS count
+    FROM appointments
+    WHERE clinic_id = ${clinicId}
+      AND created_via_call_id IS NOT NULL
+      AND created_at >= ((${from}::timestamp AT TIME ZONE ${tz}) AT TIME ZONE 'UTC')
+      AND created_at < (((${to}::date + 1)::timestamp AT TIME ZONE ${tz}) AT TIME ZONE 'UTC')
+  `;
+  const vapiApptsCreated = vapiApptsCreatedRaw[0]?.count || 0;
+  const conversionRate =
+    totalCalls > 0 ? Math.min(100, Math.round((vapiApptsCreated / totalCalls) * 1000) / 10) : 0;
+
+  // Categories Breakdown (unspecified/empty categories grouped as 'Belirtilmemiş')
   const categoriesRaw: Array<{ category: string; count: number }> = await prisma.$queryRaw`
     SELECT
-      COALESCE(category, 'Genel Bilgi') AS category,
+      COALESCE(NULLIF(category, ''), 'Belirtilmemiş') AS category,
       COUNT(*)::int AS count
     FROM call_logs
     WHERE clinic_id = ${clinicId}
