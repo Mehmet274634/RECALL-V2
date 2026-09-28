@@ -14,6 +14,30 @@ import { clinicRouter } from './routes/clinic.js';
 import { adminRouter } from './routes/admin.js';
 import { analyticsRouter } from './routes/analytics.js';
 
+// --- Production Safety Guard ---
+// Must run before any route setup. Terminates immediately if security config is unsafe.
+if (process.env.NODE_ENV === 'production') {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  if (!secretKey || secretKey === 'placeholder' || secretKey.startsWith('dev-')) {
+    console.error(
+      '[FATAL] CLERK_SECRET_KEY is not properly configured for production. Server cannot start safely.',
+    );
+    process.exit(1);
+  }
+  if (process.env.ALLOW_DEV_CLINIC_FALLBACK === 'true') {
+    console.error(
+      '[FATAL] ALLOW_DEV_CLINIC_FALLBACK=true is not permitted in production. Server cannot start safely.',
+    );
+    process.exit(1);
+  }
+  if (process.env.TEST_AUTH_OVERRIDE === 'true') {
+    console.error(
+      '[FATAL] TEST_AUTH_OVERRIDE=true is not permitted in production. Server cannot start safely.',
+    );
+    process.exit(1);
+  }
+}
+
 // --- Initialize Sentry before all imports/express app setup ---
 initBackendSentry();
 

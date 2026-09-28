@@ -12,6 +12,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:security": "tsx scripts/test-security-isolation.ts && tsx scripts/test-http-security.ts",
+    "test:all": "tsx scripts/test-security-isolation.ts && tsx scripts/test-http-security.ts && tsx scripts/test-timezone-reschedule.ts",
     "db:seed": "tsx scripts/seed.ts",
     "clinic:onboard": "tsx scripts/onboard-clinic.ts",
     "postinstall": "prisma generate"

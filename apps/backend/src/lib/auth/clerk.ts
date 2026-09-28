@@ -113,6 +113,23 @@ export async function requireAuth(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // ── TEST_AUTH_OVERRIDE ─────────────────────────────────────────────────────
+  // Integration-test mode: reads clinicId and role from request headers.
+  // NEVER active in production (guarded by NODE_ENV check AND startup guard).
+  if (process.env.TEST_AUTH_OVERRIDE === 'true' && process.env.NODE_ENV !== 'production') {
+    const testClinicId = req.headers['x-test-clinic-id'];
+    const testRole = req.headers['x-test-role'];
+    if (typeof testClinicId === 'string' && testClinicId.trim()) {
+      req.clinicId = testClinicId.trim();
+      req.role = testRole === 'admin' ? 'admin' : 'secretary';
+      return next();
+    }
+    // No test identity headers provided → simulate missing token
+    res.status(401).json({ error: 'Yetkilendirme gerekli: Token bulunamadı.' });
+    return;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   const secretKey = process.env.CLERK_SECRET_KEY;
   const authHeader = req.headers.authorization;
 
@@ -175,6 +192,22 @@ export async function requireAdmin(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // ── TEST_AUTH_OVERRIDE ─────────────────────────────────────────────────────
+  if (process.env.TEST_AUTH_OVERRIDE === 'true' && process.env.NODE_ENV !== 'production') {
+    const testRole = req.headers['x-test-role'];
+    const testClinicId = req.headers['x-test-clinic-id'];
+    if (testRole !== 'admin') {
+      res.status(403).json({
+        error: 'Erişim reddedildi: Bu işlem için Yönetici (Admin) yetkisi gereklidir.',
+      });
+      return;
+    }
+    req.role = 'admin';
+    req.clinicId = typeof testClinicId === 'string' ? testClinicId.trim() : undefined;
+    return next();
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   const secretKey = process.env.CLERK_SECRET_KEY;
   const authHeader = req.headers.authorization;
 
