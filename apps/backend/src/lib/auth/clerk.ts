@@ -3,7 +3,6 @@ import type { Request, Response, NextFunction } from 'express';
 
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { captureBackendException } from '../logging/sentry.js';
 
 export interface AuthenticatedRequest extends Request {
   auth?: Record<string, unknown>;
@@ -162,8 +161,7 @@ export async function requireAuth(
     req.clinicId = clinicId;
     next();
   } catch (error) {
-    console.warn('[auth] Clerk token validation failed:', error);
-    captureBackendException(error, { middleware: 'requireAuth' });
+    console.warn('[auth] Clerk token validation failed:', error instanceof Error ? error.message : error);
     res.status(401).json({ error: 'Geçersiz veya süresi dolmuş yetki oturumu.' });
   }
 }
@@ -224,8 +222,7 @@ export async function requireAdmin(
 
     next();
   } catch (error) {
-    console.warn('[auth] Clerk token validation failed for admin route:', error);
-    captureBackendException(error, { middleware: 'requireAdmin' });
+    console.warn('[auth] Clerk token validation failed for admin route:', error instanceof Error ? error.message : error);
     res.status(401).json({ error: 'Geçersiz veya süresi dolmuş yetki oturumu.' });
   }
 }

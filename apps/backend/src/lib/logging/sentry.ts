@@ -84,6 +84,33 @@ export function sentryBeforeSend(
   _hint?: Sentry.EventHint,
 ): Sentry.ErrorEvent | null {
   try {
+    // 0. Drop expected auth failures (401 Unauthorized / 403 Forbidden)
+    const extra = event.extra as Record<string, unknown> | undefined;
+    const statusCode = extra?.statusCode || extra?.status || (event as unknown as Record<string, unknown>).status;
+    if (statusCode === 401 || statusCode === 403 || statusCode === '401' || statusCode === '403') {
+      return null;
+    }
+
+    const hintError = _hint?.originalException as Record<string, unknown> | undefined;
+    if (hintError && typeof hintError === 'object') {
+      const errStatus = hintError.status || hintError.statusCode;
+      if (errStatus === 401 || errStatus === 403) {
+        return null;
+      }
+    }
+
+    if (
+      event.exception?.values?.some(
+        (v) =>
+          v.type === 'TokenVerificationError' ||
+          v.value?.includes('Geçersiz veya süresi dolmuş') ||
+          v.value?.includes('Yetkilendirme gerekli') ||
+          v.value?.includes('atanmış geçerli bir klinik bulunamadı'),
+      )
+    ) {
+      return null;
+    }
+
     // 1. Scrub user details
     if (event.user) {
       if (event.user.email) event.user.email = '[REDACTED_EMAIL]';

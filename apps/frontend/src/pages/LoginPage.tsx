@@ -1,18 +1,60 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { SignIn } from '@clerk/clerk-react';
-import { Stethoscope, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { SignIn, useAuth } from '@clerk/clerk-react';
+import { Stethoscope, AlertTriangle, RefreshCw } from 'lucide-react';
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-export default function LoginPage() {
-  const navigate = useNavigate();
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('sekreter@recall.health');
-  const [password, setPassword] = useState('••••••••');
+function ClerkSignInWrapper() {
+  const { isLoaded } = useAuth();
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
 
-  if (CLERK_PUBLISHABLE_KEY) {
+  useEffect(() => {
+    if (isLoaded) return;
+    const timer = setTimeout(() => {
+      if (!isLoaded) {
+        setLoadTimedOut(true);
+      }
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
+
+  if (loadTimedOut && !isLoaded) {
+    return (
+      <div className="w-full max-w-md bg-card border border-destructive/20 rounded-2xl p-8 text-center shadow-lg">
+        <div className="w-14 h-14 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto mb-4 text-destructive">
+          <AlertTriangle className="w-7 h-7" />
+        </div>
+        <h2 className="text-lg font-bold text-foreground mb-2">
+          Clerk Yüklenemedi
+        </h2>
+        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+          Kimlik doğrulama servisine bağlanılamadı. Reklam engelleyici (ad-blocker) veya internet bağlantınızı kontrol edip lütfen tekrar deneyin.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Yeniden dene
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <SignIn
+      routing="path"
+      path="/login"
+      signUpUrl="/sign-up"
+      forceRedirectUrl="/dashboard"
+    />
+  );
+}
+
+export default function LoginPage() {
+  if (!CLERK_PUBLISHABLE_KEY) {
     return (
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-6 py-12">
         <div className="flex flex-col items-center mb-6">
@@ -26,101 +68,45 @@ export default function LoginPage() {
             Klinik veya yönetici hesabınızla giriş yapın
           </p>
         </div>
-        <SignIn routing="path" path="/login" signUpUrl="/sign-up" />
+
+        <div className="w-full max-w-md bg-card border border-destructive/20 rounded-2xl p-8 text-center shadow-lg">
+          <div className="w-14 h-14 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto mb-4 text-destructive">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
+          <h2 className="text-lg font-bold text-foreground mb-2">
+            Kimlik Doğrulama Servisi Yüklenemedi
+          </h2>
+          <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+            VITE_CLERK_PUBLISHABLE_KEY anahtarı eksik veya kimlik doğrulama servisi başlatılamadı.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Yeniden dene
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-surface flex items-center justify-center px-6 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="w-full max-w-md"
-      >
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <Link to="/" className="flex items-center gap-2.5 mb-6">
-            <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center">
-              <Stethoscope className="w-6 h-6 text-primary-foreground" />
-            </div>
-          </Link>
-          <h1 className="text-2xl font-bold text-foreground">Hoş Geldiniz</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Klinik panelinize giriş yapın (Geliştirici Modu)
-          </p>
-        </div>
-
-        {/* Card */}
-        <div className="bg-card rounded-2xl border border-border shadow-sm p-8">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              navigate('/dashboard');
-            }}
-          >
-            {/* Email */}
-            <div className="mb-5">
-              <label htmlFor="login-email" className="block text-sm font-medium text-foreground mb-1.5">
-                E-posta
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  id="login-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ornek@klinik.com"
-                  className="w-full bg-background border border-border rounded-lg py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors duration-200"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div className="mb-6">
-              <label htmlFor="login-password" className="block text-sm font-medium text-foreground mb-1.5">
-                Şifre
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-background border border-border rounded-lg py-2.5 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors duration-200"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition-all duration-200 disabled:opacity-60"
-            >
-              Giriş Yap
-            </button>
-          </form>
-        </div>
-
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          Henüz hesabınız yok mu?{' '}
-          <a href="mailto:info@recall.health" className="text-primary font-medium hover:underline">
-            Bizimle iletişime geçin
-          </a>
+    <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-6 py-12">
+      <div className="flex flex-col items-center mb-6">
+        <Link to="/" className="flex items-center gap-2.5 mb-4">
+          <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-md">
+            <Stethoscope className="w-6 h-6 text-primary-foreground" />
+          </div>
+        </Link>
+        <h1 className="text-2xl font-bold text-foreground">Hoş Geldiniz</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Klinik veya yönetici hesabınızla giriş yapın
         </p>
-      </motion.div>
+      </div>
+
+      <ClerkSignInWrapper />
     </div>
   );
 }

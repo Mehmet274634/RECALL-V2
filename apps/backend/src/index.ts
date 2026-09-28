@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 
-import { initBackendSentry, captureBackendException } from './lib/logging/sentry.js';
+import { initBackendSentry } from './lib/logging/sentry.js';
 import { vapiRouter } from './routes/vapi/server.js';
 import { healthRouter } from './routes/health.js';
 import { appointmentsRouter } from './routes/appointments.js';
