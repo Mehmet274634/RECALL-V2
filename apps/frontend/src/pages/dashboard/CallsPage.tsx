@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Phone, Calendar, RefreshCw, X, MessageSquare, Clock, ArrowRight, AlertCircle } from 'lucide-react';
 
 import { api, ApiError, type CallLog } from '../../lib/api';
+import { formatIstanbulDate } from '../../lib/date';
 
 export default function CallsPage() {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
@@ -113,13 +114,16 @@ export default function CallsPage() {
             </div>
           ) : (
             callLogs.map((call) => {
-              const date = new Date(call.createdAt);
-              const dateStr = date.toLocaleDateString('tr-TR', {
+              const dateStr = formatIstanbulDate(call.createdAt, {
                 day: 'numeric',
                 month: 'long',
                 year: 'numeric',
               });
-              const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+              const timeStr = formatIstanbulDate(call.createdAt, {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              });
 
               return (
                 <div

@@ -5,6 +5,7 @@ import type { Appointment } from '@prisma/client';
 
 export { normalizePhone, isValidPhone } from '../phone.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
+import { parseIstanbulDate } from '../date-utils.js';
 
 export interface BookAppointmentParams {
   clinicId?: string;
@@ -86,11 +87,10 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
   let startsAt: Date;
   try {
     if (params.date.includes('T')) {
-      startsAt = new Date(params.date);
+      startsAt = parseIstanbulDate(params.date);
     } else {
-      const [h, m] = params.time.split(':').map(Number);
-      const [year, month, day] = params.date.split('-').map(Number);
-      startsAt = new Date(year, month - 1, day, h, m, 0);
+      const timeFormatted = params.time.trim().length === 5 ? `${params.time.trim()}:00` : params.time.trim();
+      startsAt = parseIstanbulDate(`${params.date.trim()}T${timeFormatted}`);
     }
     if (isNaN(startsAt.getTime())) {
       throw new Error('Invalid date/time');

@@ -16,6 +16,12 @@ import {
 } from 'lucide-react';
 
 import { api, ApiError, type Appointment, type Doctor, type DashboardStats } from '../../lib/api';
+import {
+  toIstanbulIsoString,
+  getIstanbulDateParts,
+  formatIstanbulDate,
+  formatIstanbulAppointment,
+} from '../../lib/date';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -27,7 +33,7 @@ export default function DashboardPage() {
 
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getIstanbulDateParts(new Date()).dateStr;
   });
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
@@ -38,7 +44,7 @@ export default function DashboardPage() {
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientPhone, setNewPatientPhone] = useState('');
   const [newDoctorId, setNewDoctorId] = useState('');
-  const [newDate, setNewDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(() => getIstanbulDateParts(new Date()).dateStr);
   const [newTime, setNewTime] = useState('10:00');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -113,7 +119,7 @@ export default function DashboardPage() {
     setCreateError(null);
 
     try {
-      const startsAt = `${newDate}T${newTime}:00`;
+      const startsAt = toIstanbulIsoString(newDate, newTime);
       await api.createAppointment({
         patientName: newPatientName,
         patientPhone: newPatientPhone,
@@ -140,14 +146,9 @@ export default function DashboardPage() {
   const openRescheduleModal = (appt: Appointment) => {
     setRescheduleAppt(appt);
     setRescheduleDoctorId(appt.doctorId);
-    const starts = new Date(appt.startsAt);
-    const yyyy = starts.getFullYear();
-    const mm = String(starts.getMonth() + 1).padStart(2, '0');
-    const dd = String(starts.getDate()).padStart(2, '0');
-    setRescheduleDate(`${yyyy}-${mm}-${dd}`);
-    const hh = String(starts.getHours()).padStart(2, '0');
-    const min = String(starts.getMinutes()).padStart(2, '0');
-    setRescheduleTime(`${hh}:${min}`);
+    const { dateStr, timeStr } = getIstanbulDateParts(appt.startsAt);
+    setRescheduleDate(dateStr);
+    setRescheduleTime(timeStr);
     setRescheduleError(null);
     setRescheduleModalOpen(true);
   };
@@ -159,7 +160,7 @@ export default function DashboardPage() {
     setRescheduleError(null);
 
     try {
-      const startsAt = `${rescheduleDate}T${rescheduleTime}:00`;
+      const startsAt = toIstanbulIsoString(rescheduleDate, rescheduleTime);
       await api.updateAppointment(rescheduleAppt.id, {
         doctorId: rescheduleDoctorId,
         startsAt,
@@ -435,12 +436,15 @@ export default function DashboardPage() {
                 </tr>
               ) : (
                 filteredAppointments.map((appt) => {
-                  const starts = new Date(appt.startsAt);
-                  const dateStr = starts.toLocaleDateString('tr-TR', {
+                  const dateStr = formatIstanbulDate(appt.startsAt, {
                     day: 'numeric',
                     month: 'short',
                   });
-                  const timeStr = `${starts.getHours().toString().padStart(2, '0')}:${starts.getMinutes().toString().padStart(2, '0')}`;
+                  const timeStr = formatIstanbulDate(appt.startsAt, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  });
 
                   return (
                     <tr key={appt.id} className="hover:bg-surface/30 transition-colors">
@@ -672,7 +676,7 @@ export default function DashboardPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground font-medium">Mevcut Randevu:</span>
                 <span className="font-semibold text-primary">
-                  {new Date(rescheduleAppt.startsAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(rescheduleAppt.startsAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} ({rescheduleAppt.doctor.name})
+                  {formatIstanbulAppointment(rescheduleAppt.startsAt)} ({rescheduleAppt.doctor.name})
                 </span>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
+import { parseIstanbulDate } from '../date-utils.js';
 
 export interface CancelAppointmentParams {
   clinicId?: string;
@@ -143,9 +144,8 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
   // Parse new date and time
   let newStartsAt: Date;
   try {
-    const [h, m] = params.newTime.split(':').map(Number);
-    const [year, month, day] = params.newDate.split('-').map(Number);
-    newStartsAt = new Date(year, month - 1, day, h, m, 0);
+    const timeFormatted = params.newTime.trim().length === 5 ? `${params.newTime.trim()}:00` : params.newTime.trim();
+    newStartsAt = parseIstanbulDate(`${params.newDate.trim()}T${timeFormatted}`);
     if (isNaN(newStartsAt.getTime())) {
       throw new Error('Invalid date');
     }

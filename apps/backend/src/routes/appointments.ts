@@ -5,6 +5,7 @@ import { AppointmentStatus } from '@prisma/client';
 import { prisma } from '../lib/db/client.js';
 import { requireAuth, type AuthenticatedRequest } from '../lib/auth/clerk.js';
 import { normalizePhone, isValidPhone } from '../lib/phone.js';
+import { parseIstanbulDate, getIstanbulDayRange } from '../lib/date-utils.js';
 
 export const appointmentsRouter = Router();
 
@@ -34,14 +35,14 @@ appointmentsRouter.get('/', async (req: AuthenticatedRequest, res) => {
     }
 
     if (date && typeof date === 'string') {
-      const [year, month, day] = date.split('-').map(Number);
-      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-        const startOfDay = new Date(year, month - 1, day, 0, 0, 0);
-        const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+      try {
+        const { startOfDay, endOfDay } = getIstanbulDayRange(date);
         whereClause.startsAt = {
           gte: startOfDay,
           lte: endOfDay,
         };
+      } catch {
+        // ignore invalid date filter
       }
     }
 
@@ -121,7 +122,7 @@ appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
 
   try {
     const clinicId = req.clinicId!;
-    const startsAt = new Date(startsAtStr);
+    const startsAt = parseIstanbulDate(startsAtStr);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
     const normalizedPhone = normalizePhone(patientPhone);
@@ -240,8 +241,8 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     let newEndsAt: Date | undefined;
 
     if (startsAt) {
-      newStartsAt = new Date(startsAt);
-      newEndsAt = endsAt ? new Date(endsAt) : new Date(newStartsAt.getTime() + 30 * 60 * 1000);
+      newStartsAt = parseIstanbulDate(startsAt);
+      newEndsAt = endsAt ? parseIstanbulDate(endsAt) : new Date(newStartsAt.getTime() + 30 * 60 * 1000);
       dataToUpdate.startsAt = newStartsAt;
       dataToUpdate.endsAt = newEndsAt;
     }
