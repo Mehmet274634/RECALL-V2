@@ -49,17 +49,6 @@ export function validateVapiSecret(req: Request, res: Response, next: NextFuncti
     return next();
   }
 
-  // Diagnostic logging (NO secret values printed - lengths and booleans only)
-  console.warn('[vapi-auth-diag] Unauthorized request rejected:', {
-    receivedHeaderNames: Object.keys(req.headers),
-    hasAuthorizationHeader: Boolean(rawAuth),
-    startsWithBearer: typeof rawAuth === 'string' && /^Bearer\s+/i.test(rawAuth),
-    rawAuthorizationLength: rawAuth ? rawAuth.length : 0,
-    parsedTokenLength: rawAuth ? rawAuth.replace(/^Bearer\s+/i, '').trim().length : 0,
-    hasLegacySecretHeader: Boolean(rawLegacy),
-    legacySecretLength: rawLegacy ? rawLegacy.trim().length : 0,
-    envSecretLength: serverSecret.length,
-  });
-
+  console.warn('[vapi] Unauthorized request — invalid or missing secret');
   res.status(401).json({ error: 'Unauthorized' });
 }
