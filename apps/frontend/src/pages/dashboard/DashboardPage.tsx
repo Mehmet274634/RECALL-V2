@@ -46,6 +46,7 @@ export default function DashboardPage() {
   const [newDoctorId, setNewDoctorId] = useState('');
   const [newDate, setNewDate] = useState(() => getIstanbulDateParts(new Date()).dateStr);
   const [newTime, setNewTime] = useState('10:00');
+  const [newDurationMinutes, setNewDurationMinutes] = useState<number>(30);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -55,6 +56,7 @@ export default function DashboardPage() {
   const [rescheduleDoctorId, setRescheduleDoctorId] = useState('');
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleTime, setRescheduleTime] = useState('10:00');
+  const [rescheduleDurationMinutes, setRescheduleDurationMinutes] = useState<number>(30);
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
 
@@ -125,15 +127,18 @@ export default function DashboardPage() {
         patientPhone: newPatientPhone,
         doctorId: newDoctorId,
         startsAt,
-        durationMinutes: 30,
+        durationMinutes: newDurationMinutes,
       });
 
       setCreateModalOpen(false);
       setNewPatientName('');
       setNewPatientPhone('');
+      setNewDurationMinutes(30);
       await loadData();
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError && err.status === 409) {
+        setCreateError('Bu doktorun seçilen saatte başka bir randevusu var');
+      } else if (err instanceof Error) {
         setCreateError(err.message);
       } else {
         setCreateError('Randevu oluşturulamadı');
@@ -149,6 +154,10 @@ export default function DashboardPage() {
     const { dateStr, timeStr } = getIstanbulDateParts(appt.startsAt);
     setRescheduleDate(dateStr);
     setRescheduleTime(timeStr);
+    const initialDuration = appt.endsAt && appt.startsAt
+      ? Math.round((new Date(appt.endsAt).getTime() - new Date(appt.startsAt).getTime()) / 60000)
+      : 30;
+    setRescheduleDurationMinutes([15, 30, 45, 60].includes(initialDuration) ? initialDuration : 30);
     setRescheduleError(null);
     setRescheduleModalOpen(true);
   };
@@ -164,6 +173,7 @@ export default function DashboardPage() {
       await api.updateAppointment(rescheduleAppt.id, {
         doctorId: rescheduleDoctorId,
         startsAt,
+        durationMinutes: rescheduleDurationMinutes,
       });
 
       setRescheduleModalOpen(false);
@@ -171,7 +181,7 @@ export default function DashboardPage() {
       await loadData();
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
-        setRescheduleError('Bu saatte doktorun başka bir randevusu var, lütfen farklı bir saat seçin.');
+        setRescheduleError('Bu doktorun seçilen saatte başka bir randevusu var');
       } else if (err instanceof Error) {
         setRescheduleError(err.message);
       } else {
@@ -440,18 +450,26 @@ export default function DashboardPage() {
                     day: 'numeric',
                     month: 'short',
                   });
-                  const timeStr = formatIstanbulDate(appt.startsAt, {
+                  const startTimeStr = formatIstanbulDate(appt.startsAt, {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
                   });
+                  const endTimeStr = appt.endsAt
+                    ? formatIstanbulDate(appt.endsAt, {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })
+                    : '';
+                  const timeDisplay = endTimeStr ? `${startTimeStr} - ${endTimeStr}` : startTimeStr;
 
                   return (
                     <tr key={appt.id} className="hover:bg-surface/30 transition-colors">
                       <td className="py-3.5 px-5 font-medium text-foreground whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                          <span>{timeStr}</span>
+                          <span>{timeDisplay}</span>
                           <span className="text-xs text-muted-foreground font-normal">({dateStr})</span>
                         </div>
                       </td>
@@ -621,6 +639,22 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">
+                  Randevu Süresi
+                </label>
+                <select
+                  value={newDurationMinutes}
+                  onChange={(e) => setNewDurationMinutes(Number(e.target.value))}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                >
+                  <option value={15}>15 dakika</option>
+                  <option value={30}>30 dakika (varsayılan)</option>
+                  <option value={45}>45 dakika</option>
+                  <option value={60}>60 dakika (1 saat)</option>
+                </select>
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-3">
                 <button
                   type="button"
@@ -728,6 +762,22 @@ export default function DashboardPage() {
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">
+                  Randevu Süresi
+                </label>
+                <select
+                  value={rescheduleDurationMinutes}
+                  onChange={(e) => setRescheduleDurationMinutes(Number(e.target.value))}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                >
+                  <option value={15}>15 dakika</option>
+                  <option value={30}>30 dakika</option>
+                  <option value={45}>45 dakika</option>
+                  <option value={60}>60 dakika (1 saat)</option>
+                </select>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3">

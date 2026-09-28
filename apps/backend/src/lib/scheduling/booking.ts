@@ -99,7 +99,10 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
     return { success: false, message: 'Geçersiz randevu tarihi veya saati belirtildi.' };
   }
 
-  const duration = params.durationMinutes || 30;
+  const allowedDurations = [15, 30, 45, 60];
+  const duration = params.durationMinutes && allowedDurations.includes(params.durationMinutes)
+    ? params.durationMinutes
+    : 30;
   const endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
 
   // Past check
@@ -153,7 +156,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
         where: {
           clinicId,
           doctorId: doctor.id,
-          status: 'SCHEDULED',
+          status: { not: 'CANCELLED' },
           AND: [
             { startsAt: { lt: endsAt } },
             { endsAt: { gt: startsAt } },

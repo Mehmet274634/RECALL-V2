@@ -96,6 +96,8 @@ appointmentsRouter.get('/:id', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+const ALLOWED_DURATIONS = [15, 30, 45, 60] as const;
+
 const createAppointmentSchema = z.object({
   patientName: z.string().min(2),
   patientPhone: z.string().refine((val) => isValidPhone(val), {
@@ -103,7 +105,13 @@ const createAppointmentSchema = z.object({
   }),
   doctorId: z.string(),
   startsAt: z.string(), // ISO string
-  durationMinutes: z.number().default(30),
+  durationMinutes: z
+    .number()
+    .int()
+    .refine((val) => ALLOWED_DURATIONS.includes(val as (typeof ALLOWED_DURATIONS)[number]), {
+      message: 'Geçersiz randevu süresi. Sadece 15, 30, 45 veya 60 dakika seçilebilir.',
+    })
+    .default(30),
 });
 
 /**
@@ -126,6 +134,13 @@ appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
     const normalizedPhone = normalizePhone(patientPhone);
+
+    // Validate doctorId belongs to this clinic (prevents cross-tenant doctorId injection)
+    const doctorInClinic = await prisma.doctor.findFirst({ where: { id: doctorId, clinicId } });
+    if (!doctorInClinic) {
+      res.status(404).json({ error: 'Belirtilen doktor bu kliniğe ait değil veya bulunamadı.' });
+      return;
+    }
 
     // Upsert patient scoped to tenant's clinicId
     const patient = await prisma.patient.upsert({
@@ -152,7 +167,7 @@ appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
         where: {
           clinicId,
           doctorId,
-          status: 'SCHEDULED',
+          status: { not: AppointmentStatus.CANCELLED },
           AND: [
             { startsAt: { lt: endsAt } },
             { endsAt: { gt: startsAt } },
@@ -194,6 +209,13 @@ appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
 const updateAppointmentSchema = z.object({
   startsAt: z.string().optional(),
   endsAt: z.string().optional(),
+  durationMinutes: z
+    .number()
+    .int()
+    .refine((val) => ALLOWED_DURATIONS.includes(val as (typeof ALLOWED_DURATIONS)[number]), {
+      message: 'Geçersiz randevu süresi. Sadece 15, 30, 45 veya 60 dakika seçilebilir.',
+    })
+    .optional(),
   status: z.nativeEnum(AppointmentStatus).optional(),
   doctorId: z.string().optional(),
 });
@@ -223,7 +245,18 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
       return;
     }
 
-    const { startsAt, endsAt, status, doctorId } = parsed.data;
+    // Final state guard: CANCELLED and COMPLETED are terminal.
+    // Only admin role may revert from these states.
+    const FINAL_STATES: AppointmentStatus[] = [AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED];
+    if (FINAL_STATES.includes(existing.status) && req.role !== 'admin') {
+      res.status(409).json({
+        error: `Randevu durumu değiştirilemez. "${existing.status}" son bir durumdur ve yalnızca yönetici tarafından geri alınabilir.`,
+        currentStatus: existing.status,
+      });
+      return;
+    }
+
+    const { startsAt, endsAt, durationMinutes, status, doctorId } = parsed.data;
 
     const dataToUpdate: Record<string, unknown> = {};
 
@@ -231,39 +264,59 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
       dataToUpdate.status = status;
     }
     if (doctorId) {
+      // Validate updated doctorId belongs to this clinic
+      const doctorInClinic = await prisma.doctor.findFirst({ where: { id: doctorId, clinicId } });
+      if (!doctorInClinic) {
+        res.status(404).json({ error: 'Belirtilen doktor bu kliniğe ait değil veya bulunamadı.' });
+        return;
+      }
       dataToUpdate.doctorId = doctorId;
     }
 
     const targetDoctorId = doctorId || existing.doctorId;
     const targetStatus = status || existing.status;
 
-    let newStartsAt: Date | undefined;
-    let newEndsAt: Date | undefined;
+    let checkStartsAt: Date = existing.startsAt;
+    let checkEndsAt: Date = existing.endsAt;
+    let scheduleChanged = false;
 
     if (startsAt) {
-      newStartsAt = parseIstanbulDate(startsAt);
-      newEndsAt = endsAt ? parseIstanbulDate(endsAt) : new Date(newStartsAt.getTime() + 30 * 60 * 1000);
-      dataToUpdate.startsAt = newStartsAt;
-      dataToUpdate.endsAt = newEndsAt;
+      checkStartsAt = parseIstanbulDate(startsAt);
+      scheduleChanged = true;
+    }
+
+    if (endsAt) {
+      checkEndsAt = parseIstanbulDate(endsAt);
+      scheduleChanged = true;
+    } else if (durationMinutes) {
+      checkEndsAt = new Date(checkStartsAt.getTime() + durationMinutes * 60 * 1000);
+      scheduleChanged = true;
+    } else if (startsAt) {
+      // Preserve existing appointment duration if durationMinutes not provided
+      const existingDurationMs = existing.endsAt.getTime() - existing.startsAt.getTime();
+      checkEndsAt = new Date(checkStartsAt.getTime() + (existingDurationMs > 0 ? existingDurationMs : 30 * 60 * 1000));
+      scheduleChanged = true;
+    }
+
+    if (scheduleChanged) {
+      dataToUpdate.startsAt = checkStartsAt;
+      dataToUpdate.endsAt = checkEndsAt;
     }
 
     // Run in transaction with sorted deadlock-free row-level locks on doctors if updating schedule
     const updated = await prisma.$transaction(async (tx) => {
-      if (targetStatus === 'SCHEDULED' && (newStartsAt || doctorId)) {
+      if (targetStatus === 'SCHEDULED' && (scheduleChanged || doctorId)) {
         // Lock both source and target doctors in strictly ASCENDING order to prevent deadlocks
         const doctorIdsToLock = Array.from(new Set([existing.doctorId, targetDoctorId])).sort();
         for (const docId of doctorIdsToLock) {
           await tx.$executeRaw`SELECT id FROM doctors WHERE id = ${docId} FOR UPDATE`;
         }
 
-        const checkStartsAt = newStartsAt || existing.startsAt;
-        const checkEndsAt = newEndsAt || existing.endsAt;
-
         const conflict = await tx.appointment.findFirst({
           where: {
             clinicId,
             doctorId: targetDoctorId,
-            status: 'SCHEDULED',
+            status: { not: AppointmentStatus.CANCELLED },
             id: { not: existing.id },
             AND: [
               { startsAt: { lt: checkEndsAt } },

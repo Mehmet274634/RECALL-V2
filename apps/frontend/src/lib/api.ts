@@ -204,6 +204,7 @@ export const api = {
       status?: 'SCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
       startsAt?: string;
       endsAt?: string;
+      durationMinutes?: number;
       doctorId?: string;
     },
   ) =>
