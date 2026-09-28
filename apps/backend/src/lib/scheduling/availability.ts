@@ -1,5 +1,6 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
+import { getIstanbulDayRange, parseIstanbulDate } from '../date-utils.js';
 
 export interface CheckAvailabilityParams {
   clinicId?: string;
@@ -31,19 +32,28 @@ export async function checkAvailability(
 
   // 1. Resolve Target Date (default to tomorrow if not specified or invalid)
   let targetDate: Date;
+  let dateStr: string;
+
   if (params.date) {
-    targetDate = new Date(params.date);
-    if (isNaN(targetDate.getTime())) {
-      targetDate = new Date();
-      targetDate.setDate(targetDate.getDate() + 1);
+    try {
+      targetDate = parseIstanbulDate(params.date);
+      dateStr = params.date.trim().includes('T')
+        ? params.date.trim().split('T')[0]
+        : params.date.trim().slice(0, 10);
+    } catch {
+      targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const dIso = new Date(targetDate.getTime() + 3 * 60 * 60 * 1000).toISOString();
+      dateStr = dIso.split('T')[0];
     }
   } else {
-    targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + 1);
+    targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const dIso = new Date(targetDate.getTime() + 3 * 60 * 60 * 1000).toISOString();
+    dateStr = dIso.split('T')[0];
   }
 
-  const dateStr = targetDate.toISOString().split('T')[0];
-  const dayName = DAYS_MAP[targetDate.getDay()];
+  // Calculate day name in Europe/Istanbul (+03:00)
+  const istanbulDateObj = new Date(targetDate.getTime() + 3 * 60 * 60 * 1000);
+  const dayName = DAYS_MAP[istanbulDateObj.getUTCDay()];
 
   // 2. Find Doctor
   let doctor = null;
@@ -117,44 +127,46 @@ export async function checkAvailability(
   const [startH, startM] = startHourStr.split(':').map(Number);
   const [endH, endM] = endHourStr.split(':').map(Number);
 
-  // 4. Fetch existing scheduled appointments on this date
-  const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
-  const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59);
+  // 4. Fetch non-cancelled appointments overlapping with this day in Istanbul timezone
+  const { startOfDay, endOfDay } = getIstanbulDayRange(dateStr);
 
   const existingAppointments = await prisma.appointment.findMany({
     where: {
       clinicId,
       doctorId: doctor.id,
-      status: 'SCHEDULED',
-      startsAt: { gte: dayStart, lte: dayEnd },
+      status: { not: 'CANCELLED' },
+      startsAt: { lte: endOfDay },
+      endsAt: { gte: startOfDay },
     },
   });
 
-  const bookedTimes = new Set(
-    existingAppointments.map((a) => {
-      const h = a.startsAt.getHours().toString().padStart(2, '0');
-      const m = a.startsAt.getMinutes().toString().padStart(2, '0');
-      return `${h}:${m}`;
-    }),
-  );
-
-  // 5. Generate slots
+  // 5. Generate and test candidate slots against real endsAt intervals
   const availableSlots: string[] = [];
-  const currentSlot = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), startH, startM, 0);
-  const finishTime = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), endH, endM, 0);
-
+  const startMinutes = startH * 60 + startM;
+  const finishMinutes = endH * 60 + endM;
   const now = new Date();
 
-  while (currentSlot < finishTime) {
-    const timeStr = `${currentSlot.getHours().toString().padStart(2, '0')}:${currentSlot.getMinutes().toString().padStart(2, '0')}`;
+  for (let m = startMinutes; m + slotDuration <= finishMinutes; m += slotDuration) {
+    const slotHour = Math.floor(m / 60).toString().padStart(2, '0');
+    const slotMinute = (m % 60).toString().padStart(2, '0');
+    const timeStr = `${slotHour}:${slotMinute}`;
+
+    const slotStart = parseIstanbulDate(`${dateStr}T${timeStr}:00`);
+    const slotEnd = new Date(slotStart.getTime() + slotDuration * 60 * 1000);
 
     // Skip if in the past
-    const isPast = currentSlot.getTime() <= now.getTime();
-    if (!isPast && !bookedTimes.has(timeStr)) {
-      availableSlots.push(timeStr);
+    if (slotStart.getTime() <= now.getTime()) {
+      continue;
     }
 
-    currentSlot.setMinutes(currentSlot.getMinutes() + slotDuration);
+    // Interval overlap check: [slotStart, slotEnd) vs any non-cancelled appointment [appt.startsAt, appt.endsAt)
+    const hasOverlap = existingAppointments.some((appt) => {
+      return appt.startsAt < slotEnd && appt.endsAt > slotStart;
+    });
+
+    if (!hasOverlap) {
+      availableSlots.push(timeStr);
+    }
   }
 
   if (availableSlots.length === 0) {
@@ -169,7 +181,7 @@ export async function checkAvailability(
     };
   }
 
-  // Select 3 sample slots spread across the day (morning, afternoon)
+  // Select 3 sample slots spread across the day
   const proposedSlots = availableSlots.slice(0, 3);
   const slotsText = proposedSlots.join(', ');
 
@@ -182,7 +194,7 @@ export async function checkAvailability(
     doctorName: doctor.name,
     specialty: doctor.specialty || undefined,
     date: dateStr,
-    availableSlots: proposedSlots,
+    availableSlots,
     message,
   };
 }

@@ -6,6 +6,7 @@ import type { Appointment } from '@prisma/client';
 export { normalizePhone, isValidPhone } from '../phone.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
 import { parseIstanbulDate } from '../date-utils.js';
+import { checkAvailability } from './availability.js';
 
 export interface BookAppointmentParams {
   clinicId?: string;
@@ -197,9 +198,26 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
     };
   } catch (error: unknown) {
     if (error instanceof Error && error.message === 'SLOT_OCCUPIED') {
+      let conflictMsg =
+        'Seçilen saatte doktorumuzun başka bir randevusu bulunmaktadır. Lütfen müsait olan başka bir saat seçiniz.';
+      try {
+        const dateOnly = params.date.includes('T') ? params.date.split('T')[0] : params.date.trim();
+        const avail = await checkAvailability({
+          clinicId,
+          doctorId: doctor.id,
+          date: dateOnly,
+        });
+        if (avail.success && avail.availableSlots && avail.availableSlots.length > 0) {
+          const sample = avail.availableSlots.slice(0, 3).join(', ');
+          conflictMsg = `Seçilen saatte doktorumuzun başka bir randevusu bulunmaktadır. Müsait alternatif saatler: ${sample}. Bu saatlerden birini tercih edebilir misiniz?`;
+        }
+      } catch {
+        // Fallback to standard conflict message if availability calculation encounters an issue
+      }
+
       return {
         success: false,
-        message: 'Seçilen saatte doktorumuzun başka bir randevusu bulunmaktadır. Lütfen müsait olan başka bir saat seçiniz.',
+        message: conflictMsg,
       };
     }
     console.error('[booking] Error booking appointment:', error);

@@ -135,6 +135,9 @@ async function resolveClinicForRequest(body: Record<string, unknown>) {
     if (clinicByPhone) return clinicByPhone;
   }
 
+  console.warn(
+    '[vapi] Inbound request missing phoneNumber and clinicId metadata — falling back to default clinic',
+  );
   return getDefaultClinic();
 }
 

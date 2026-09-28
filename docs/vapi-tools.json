@@ -1,0 +1,178 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "check_availability",
+      "description": "Belirli bir tarih, doktor adı veya branş için klinikteki müsait randevu slotlarını sorgular ve uygun saatleri döner.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Randevu sorgulanmak istenen takvim tarihi (YYYY-MM-DD formatında, örn: 2026-10-05)"
+          },
+          "doctorName": {
+            "type": "string",
+            "description": "Randevu alınmak istenen doktorun adı (opsiyonel)"
+          },
+          "specialty": {
+            "type": "string",
+            "description": "Randevu alınmak istenen uzmanlık alanı/branş (örn: Dahiliye, Kardiyoloji - opsiyonel)"
+          }
+        },
+        "required": ["date"]
+      }
+    },
+    "server": {
+      "url": "https://<YOUR_BACKEND_DOMAIN>/api/vapi/server",
+      "secret": "<VAPI_SERVER_SECRET_PLACEHOLDER>",
+      "headers": {
+        "Authorization": "Bearer <VAPI_SERVER_SECRET_PLACEHOLDER>"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "book_appointment",
+      "description": "Hasta adına hekimden belirli bir tarih ve saat için yeni bir randevu kaydı oluşturur.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı"
+          },
+          "patientPhone": {
+            "type": "string",
+            "description": "Hastanın geçerli cep telefonu numarası (örn: 05321234567)"
+          },
+          "date": {
+            "type": "string",
+            "description": "Randevu tarihi (YYYY-MM-DD formatında, örn: 2026-10-05)"
+          },
+          "time": {
+            "type": "string",
+            "description": "Randevu saati (HH:mm formatında, 24 saat esasına göre, örn: 14:30)"
+          },
+          "doctorName": {
+            "type": "string",
+            "description": "Randevu alınmak istenen hekimin adı (opsiyonel)"
+          },
+          "specialty": {
+            "type": "string",
+            "description": "Doktor uzmanlık alanı (opsiyonel)"
+          }
+        },
+        "required": ["patientName", "patientPhone", "date", "time"]
+      }
+    },
+    "server": {
+      "url": "https://<YOUR_BACKEND_DOMAIN>/api/vapi/server",
+      "secret": "<VAPI_SERVER_SECRET_PLACEHOLDER>",
+      "headers": {
+        "Authorization": "Bearer <VAPI_SERVER_SECRET_PLACEHOLDER>"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "lookup_appointment",
+      "description": "Hastanın telefon numarasını veya adını kullanarak sistemdeki aktif randevu kaydını sorgular.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "patientPhone": {
+            "type": "string",
+            "description": "Randevusu sorgulanacak hastanın cep telefonu numarası (örn: 05321234567)"
+          },
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı (opsiyonel)"
+          }
+        },
+        "required": ["patientPhone"]
+      }
+    },
+    "server": {
+      "url": "https://<YOUR_BACKEND_DOMAIN>/api/vapi/server",
+      "secret": "<VAPI_SERVER_SECRET_PLACEHOLDER>",
+      "headers": {
+        "Authorization": "Bearer <VAPI_SERVER_SECRET_PLACEHOLDER>"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "cancel_appointment",
+      "description": "Hastanın mevcut randevusunu iptal eder.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "patientPhone": {
+            "type": "string",
+            "description": "Randevusu iptal edilecek hastanın cep telefonu numarası"
+          },
+          "appointmentId": {
+            "type": "string",
+            "description": "İptal edilecek spesifik randevu ID'si (varsa opsiyonel)"
+          },
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı (opsiyonel)"
+          }
+        },
+        "required": ["patientPhone"]
+      }
+    },
+    "server": {
+      "url": "https://<YOUR_BACKEND_DOMAIN>/api/vapi/server",
+      "secret": "<VAPI_SERVER_SECRET_PLACEHOLDER>",
+      "headers": {
+        "Authorization": "Bearer <VAPI_SERVER_SECRET_PLACEHOLDER>"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "reschedule_appointment",
+      "description": "Hastanın mevcut randevusunu yeni bir tarih ve saate taşır (yeniden planlar / erteler).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "patientPhone": {
+            "type": "string",
+            "description": "Randevusu ertelenecek hastanın cep telefonu numarası"
+          },
+          "newDate": {
+            "type": "string",
+            "description": "Yeni randevu tarihi (YYYY-MM-DD formatında, örn: 2026-10-06)"
+          },
+          "newTime": {
+            "type": "string",
+            "description": "Yeni randevu saati (HH:mm formatında, 24 saat esasına göre, örn: 15:30)"
+          },
+          "appointmentId": {
+            "type": "string",
+            "description": "Taşınacak randevu ID'si (opsiyonel)"
+          },
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı (opsiyonel)"
+          }
+        },
+        "required": ["patientPhone", "newDate", "newTime"]
+      }
+    },
+    "server": {
+      "url": "https://<YOUR_BACKEND_DOMAIN>/api/vapi/server",
+      "secret": "<VAPI_SERVER_SECRET_PLACEHOLDER>",
+      "headers": {
+        "Authorization": "Bearer <VAPI_SERVER_SECRET_PLACEHOLDER>"
+      }
+    }
+  }
+]

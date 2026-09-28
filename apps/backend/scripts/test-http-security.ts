@@ -25,6 +25,7 @@ import { fileURLToPath } from 'url';
 import { PrismaClient, AppointmentStatus } from '@prisma/client';
 import { parseIstanbulDate } from '../src/lib/date-utils.js';
 import { bookAppointment } from '../src/lib/scheduling/booking.js';
+import { checkAvailability } from '../src/lib/scheduling/availability.js';
 import { setTimeout as wait } from 'timers/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -524,6 +525,143 @@ async function test4_ConflictDetection() {
       `DB kayıt sayısı: ${patchTargetCount}`
     );
   }
+
+  // 4o. check_availability ve book_appointment tutarlılık testleri
+  await prisma.appointment.deleteMany({
+    where: {
+      clinicId: CLINIC_A_ID,
+      doctorId: DOCTOR_A_ID,
+      startsAt: {
+        gte: parseIstanbulDate('2026-12-07T00:00:00+03:00'),
+        lte: parseIstanbulDate('2026-12-07T23:59:59+03:00'),
+      },
+    },
+  });
+
+  // 1. 45 dk'lık randevu (10:00 - 10:45) aralık kontrolü
+  const appt45 = await bookAppointment({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    patientName: 'Tutarlılık Hasta 45dk',
+    patientPhone: '05550021031',
+    date: '2026-12-07',
+    time: '10:00',
+    durationMinutes: 45,
+  });
+  assert(appt45.success === true, '4o-1. 45 dk süreli başlangıç randevusu oluşturuldu (10:00 - 10:45)');
+
+  const availAfter45 = await checkAvailability({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    date: '2026-12-07',
+  });
+  assert(
+    !availAfter45.availableSlots.includes('10:00') && !availAfter45.availableSlots.includes('10:30'),
+    '4o-2. check_availability: 45 dk randevu nedeniyle hem 10:00 hem 10:30 slotlarını dolu saydı',
+    `Müsait slotlar: ${availAfter45.availableSlots.join(', ')}`
+  );
+
+  const suggestedSlot = availAfter45.availableSlots[0];
+  const bookSuggested = await bookAppointment({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    patientName: 'Önerilen Slot Hastası',
+    patientPhone: '05550021032',
+    date: '2026-12-07',
+    time: suggestedSlot,
+    durationMinutes: 30,
+  });
+  assert(
+    bookSuggested.success === true,
+    `4o-3. check_availability'nin önerdiği müsait slot (${suggestedSlot}) book_appointment tarafından reddedilmedi`
+  );
+
+  // 2. COMPLETED randevu slotunun dolu sayılması testi
+  const patientA = await prisma.patient.findFirst({ where: { clinicId: CLINIC_A_ID } });
+  await prisma.appointment.create({
+    data: {
+      clinicId: CLINIC_A_ID,
+      doctorId: DOCTOR_A_ID,
+      patientId: patientA!.id,
+      startsAt: parseIstanbulDate('2026-12-07T13:00:00+03:00'),
+      endsAt: parseIstanbulDate('2026-12-07T13:30:00+03:00'),
+      status: 'COMPLETED',
+    },
+  });
+
+  const availAfterCompleted = await checkAvailability({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    date: '2026-12-07',
+  });
+  assert(
+    !availAfterCompleted.availableSlots.includes('13:00'),
+    '4o-4. check_availability: COMPLETED durumundaki randevu slotunu dolu gördü (status not CANCELLED)'
+  );
+
+  // 3. CANCELLED randevu slotunun boş sayılması ve tekrar rezerve edilebilmesi
+  await prisma.appointment.create({
+    data: {
+      clinicId: CLINIC_A_ID,
+      doctorId: DOCTOR_A_ID,
+      patientId: patientA!.id,
+      startsAt: parseIstanbulDate('2026-12-07T14:00:00+03:00'),
+      endsAt: parseIstanbulDate('2026-12-07T14:30:00+03:00'),
+      status: 'CANCELLED',
+    },
+  });
+
+  const availAfterCancelled = await checkAvailability({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    date: '2026-12-07',
+  });
+  assert(
+    availAfterCancelled.availableSlots.includes('14:00'),
+    '4o-5. check_availability: CANCELLED durumundaki randevu slotunu boş saydı ve önerdi'
+  );
+
+  const bookCancelledSlot = await bookAppointment({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    patientName: 'İptal Slotu Hastası',
+    patientPhone: '05550021033',
+    date: '2026-12-07',
+    time: '14:00',
+    durationMinutes: 30,
+  });
+  assert(
+    bookCancelledSlot.success === true,
+    '4o-6. book_appointment: İptal edilmiş slot için randevuyu başarıyla oluşturdu'
+  );
+
+  // 4. book_appointment çakışma durumunda alternatif slot önerisi testi
+  const conflictWithAlternates = await bookAppointment({
+    clinicId: CLINIC_A_ID,
+    doctorId: DOCTOR_A_ID,
+    patientName: 'Çakışma Alternatif Hastası',
+    patientPhone: '05550021034',
+    date: '2026-12-07',
+    time: '10:00',
+    durationMinutes: 30,
+  });
+  assert(
+    conflictWithAlternates.success === false &&
+      conflictWithAlternates.message.includes('Müsait alternatif saatler:'),
+    '4o-7. book_appointment çakışmada hastaya alternatif saat önerisi sundu'
+  );
+
+  // Clean up 2026-12-07 appointments
+  await prisma.appointment.deleteMany({
+    where: {
+      clinicId: CLINIC_A_ID,
+      doctorId: DOCTOR_A_ID,
+      startsAt: {
+        gte: parseIstanbulDate('2026-12-07T00:00:00+03:00'),
+        lte: parseIstanbulDate('2026-12-07T23:59:59+03:00'),
+      },
+    },
+  });
 
   // Cleanup test appointments and patients
   await prisma.appointment.deleteMany({
