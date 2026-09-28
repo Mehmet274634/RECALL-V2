@@ -7,6 +7,7 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import CallsPage from './pages/dashboard/CallsPage';
 import DoctorsPage from './pages/dashboard/DoctorsPage';
 import ClinicSettingsPage from './pages/dashboard/ClinicSettingsPage';
+import ReportsPage from './pages/dashboard/ReportsPage';
 import AdminLayout from './components/layout/AdminLayout';
 import AdminClinicsPage from './pages/admin/AdminClinicsPage';
 import AdminNewClinicPage from './pages/admin/AdminNewClinicPage';
@@ -21,6 +22,7 @@ function App() {
       <Route path="/dashboard" element={<SecretaryLayout />}>
         <Route index element={<DashboardPage />} />
         <Route path="calls" element={<CallsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="doctors" element={<DoctorsPage />} />
         <Route path="settings" element={<ClinicSettingsPage />} />
         {/* Redirect unknown dashboard sub-routes */}

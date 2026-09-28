@@ -12,6 +12,7 @@ import {
   X,
   AlertCircle,
   CalendarClock,
+  UserX,
 } from 'lucide-react';
 
 import { api, ApiError, type Appointment, type Doctor, type DashboardStats } from '../../lib/api';
@@ -490,6 +491,13 @@ export default function DashboardPage() {
                               className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
                             >
                               <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleStatusUpdate(appt.id, 'NO_SHOW')}
+                              title="Gelmedi olarak işaretle"
+                              className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                            >
+                              <UserX className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleStatusUpdate(appt.id, 'CANCELLED')}

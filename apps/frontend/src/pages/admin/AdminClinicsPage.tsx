@@ -14,12 +14,14 @@ import {
   X,
   Send,
   AlertCircle,
+  Activity,
 } from 'lucide-react';
 
-import { api, type AdminClinicItem } from '../../lib/api';
+import { api, type AdminClinicItem, type AdminClinicsAnalyticsOverview } from '../../lib/api';
 
 export default function AdminClinicsPage() {
   const [clinics, setClinics] = useState<AdminClinicItem[]>([]);
+  const [analyticsOverview, setAnalyticsOverview] = useState<AdminClinicsAnalyticsOverview['clinics']>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,15 @@ export default function AdminClinicsPage() {
   const loadClinics = useCallback(async () => {
     try {
       setError(null);
-      const data = await api.getAdminClinics();
+      const [data, analyticsData] = await Promise.all([
+        api.getAdminClinics(),
+        api.getAdminClinicsAnalytics().catch((e) => {
+          console.warn('[admin] Analytics overview load failed:', e);
+          return { clinics: [] };
+        }),
+      ]);
       setClinics(data.clinics);
+      setAnalyticsOverview(analyticsData.clinics);
     } catch (err: unknown) {
       console.error('Error fetching admin clinics:', err);
       setError(err instanceof Error ? err.message : 'Klinikler yüklenemedi.');
@@ -181,6 +190,103 @@ export default function AdminClinicsPage() {
           <span>{error}</span>
         </div>
       )}
+
+      {/* 30-Day Platform Analytics Comparison */}
+      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="p-4 px-5 border-b border-border bg-surface/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Activity className="w-4 h-4 text-violet-600" />
+              Klinik Aktivite Karşılaştırması (Son 30 Gün)
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Platform geneli randevu ve çağrı hacmi — hangi kliniğin sistemi aktif kullandığı özeti
+            </p>
+          </div>
+          <span className="text-[11px] font-mono bg-surface px-2.5 py-1 rounded-full border border-border text-muted-foreground self-start sm:self-auto">
+            Son 30 Gün
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-border bg-surface/30 text-xs font-semibold text-muted-foreground">
+                <th className="py-3 px-5">Klinik Adı</th>
+                <th className="py-3 px-5">Santral Numarası</th>
+                <th className="py-3 px-5">Doktor</th>
+                <th className="py-3 px-5">Randevu Hacmi</th>
+                <th className="py-3 px-5">Tamamlanan</th>
+                <th className="py-3 px-5">Yapay Zeka Çağrısı</th>
+                <th className="py-3 px-5 text-right">Durum</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-muted-foreground text-xs">
+                    Analitik verileri yükleniyor...
+                  </td>
+                </tr>
+              ) : analyticsOverview.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-muted-foreground text-xs">
+                    Henüz aktivite verisi bulunmuyor.
+                  </td>
+                </tr>
+              ) : (
+                analyticsOverview.map((item) => {
+                  const totalActivity = item.appointmentsCountLast30Days + item.callsCountLast30Days;
+                  let statusBadge = (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                      Yüksek Aktif
+                    </span>
+                  );
+                  if (totalActivity === 0) {
+                    statusBadge = (
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-surface text-muted-foreground border border-border">
+                        Yeni / Hareketsiz
+                      </span>
+                    );
+                  } else if (totalActivity < 10) {
+                    statusBadge = (
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                        Orta Seviye
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <tr key={item.id} className="hover:bg-surface/30 transition-colors">
+                      <td className="py-3.5 px-5 font-semibold text-foreground text-xs">
+                        {item.name}
+                      </td>
+                      <td className="py-3.5 px-5 text-xs text-muted-foreground font-mono">
+                        {item.phoneNumber}
+                      </td>
+                      <td className="py-3.5 px-5 text-xs text-foreground">
+                        {item.doctorsCount}
+                      </td>
+                      <td className="py-3.5 px-5 text-xs font-semibold text-foreground">
+                        {item.appointmentsCountLast30Days}
+                      </td>
+                      <td className="py-3.5 px-5 text-xs text-green-600 font-medium">
+                        {item.completedAppointmentsCountLast30Days}
+                      </td>
+                      <td className="py-3.5 px-5 text-xs font-semibold text-violet-600">
+                        {item.callsCountLast30Days}
+                      </td>
+                      <td className="py-3.5 px-5 text-right whitespace-nowrap">
+                        {statusBadge}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Search Bar */}
       <div className="bg-card rounded-2xl border border-border p-4 shadow-sm flex items-center gap-3">

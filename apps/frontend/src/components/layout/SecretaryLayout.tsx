@@ -8,11 +8,13 @@ import {
   ExternalLink,
   ShieldCheck,
   Settings,
+  BarChart3,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', label: 'Randevular', icon: Calendar },
   { to: '/dashboard/calls', label: 'Çağrı Kayıtları', icon: Phone },
+  { to: '/dashboard/reports', label: 'Raporlar', icon: BarChart3 },
   { to: '/dashboard/doctors', label: 'Doktorlar', icon: Users },
   { to: '/dashboard/settings', label: 'Klinik Ayarları', icon: Settings },
 ];

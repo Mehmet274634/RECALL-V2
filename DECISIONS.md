@@ -588,6 +588,44 @@ Sistem hem frontend (Vite React SPA) hem backend (Node.js/Express) katmanlarınd
 **Sonuçlar:**
 - (+) Backend ve frontend çökmeleri anında görünür hale geldi.
 - (+) KVKK/GDPR uyumu garanti altına alındı; kişisel hasta verilerinin üçüncü parti sunuculara sızması engellendi.
-- (+) Kullanıcılar beyaz ekran çökmesi yerine toparlanabilir arayüzle karşılaşır.
-
 ---
+
+## ADR-020: Klinik Analitik ve Raporlama Mimarisi (Veritabanı Düzeyinde Saat Dilimi Gruplaması, No-Show Metrikleri ve Sıfır-KVKK Güvencesi)
+
+- **Tarih:** 2026-09-28
+- **Durum:** ✅ Kabul edildi
+
+**Bağlam:**
+Sekreter ve klinik yöneticilerinin randevu akışlarını, operasyonel darboğazları, hekim doluluk oranlarını ve yapay zeka santralinin (Vapi) dönüşüm başarısını analiz edebilmesi için Faz 5 Analitik & Raporlama modülü tasarlanmıştır. Bu modülün tasarımı esnasında dört kritik mühendislik gereksinimi gözetilmiştir:
+1. **Veritabanı Düzeyinde Hesaplama (Sunucusuz Dayanıklılık):** Kayıtların tamamını Node.js belleğine çekip JavaScript `filter/reduce` ile işlemek veri büyüdükçe Vercel Serverless 10-15 saniyelik timeout sınırını aşar ve bellek taşmalarına yol açar.
+2. **Saat Dilimi Doğruluğu (Midnight Edge Case):** Prisma `DateTime` alanlarını PostgreSQL'de UTC `timestamp without time zone` olarak saklar. Doğrudan UTC üzerinde gün gruplaması yapıldığında, Türkiye saatine göre 23:30 randevusu ile ertesi gün 00:30 randevusu yanlış günlere atanır.
+3. **No-Show Durumunun Eksiksiz Takibi:** Sağlık kliniklerinde en maliyetli kayıp no-show (randevuya gelmeme) durumudur. No-show oranı veri modelinde ayrı bir durum olarak kaydedilmeden hesaplanamaz.
+4. **KVKK / Kişisel Veri Koruma Zorunluluğu:** Raporlama ekranlarının yalnızca toplu istatistik üretmesi, hasta adı, telefon ve şikayet gibi kişisel sağlık verilerini API ve ekran çıktılarından tamamen arındırması zorunludur.
+
+**Karar:**
+1. **Metrik Formülleri ve Standartlar:**
+   - **No-Show Oranı:** `Gelmedi / (Tamamlandı + Gelmedi) * 100`. Planlanan veya iptal edilen randevular henüz gerçekleşmemiş veya gelmeme durumu taşımadığından paydaya dahil edilmez. Payda 0 ise sıfıra bölme hatasını önlemek için doğrudan `%0.0` döner (`NaN%` engellenir).
+   - **İptal Oranı:** `İptal Edildi / Toplam Randevu * 100`.
+   - **Çağrı Dönüşüm Oranı:** `Vapi Kaynaklı Randevu / Toplam Gelen Çağrı * 100`.
+   - **Hekim Doluluk Oranı:** `Aktif Randevu Slotu (İptaller hariç) / Toplam Müsait Slot * 100`. Hekimin `workingHours` JSON konfigürasyonundaki haftalık mesai günleri, mesai başlangıç-bitiş saatleri ve slot süresi (varsayılan 30 dk) tarih aralığındaki takvim günleriyle çarpılarak toplam müsait slot sayısı dinamik hesaplanır.
+2. **Veritabanı Düzeyinde Gruplama ve Saat Dilimi Kararı:**
+   - Tüm toplamlar, günlük trendler, saatlik ve haftalık gün dağılımları PostgreSQL `$queryRaw` sorguları ile veritabanı motorunda (`COUNT(*) FILTER (...)`, `EXTRACT(...)`, `TO_CHAR(...)`) icra edilir.
+   - Saat dilimi dönüşümünde PostgreSQL'in iki aşamalı `(starts_at AT TIME ZONE 'UTC') AT TIME ZONE Clinic.timezone` (varsayılan `Europe/Istanbul`) mekanizması uygulanmıştır. Bu sayede 23:30 TR ve 00:30 TR randevularının yerel takvimde farklı günlere düştüğü doğrulanmıştır.
+   - Performans için `appointments(clinic_id, starts_at)`, `appointments(clinic_id, status)`, `call_logs(clinic_id, created_at)` ve `call_logs(clinic_id, category)` bileşik indeksleri Neon PostgreSQL veritabanına eklenmiştir.
+   - Aşırı yükü önlemek adına maksimum tarih aralığı 366 gün (1 yıl) olarak sınırlandırılmıştır.
+3. **Arayüz ve Kullanıcı Deneyimi:**
+   - Sekreter dashboard tablosuna "Tamamlandı" ve "İptal" aksiyonlarının yanına kehribar renkli "Gelmedi" (`UserX`) butonu eklenmiştir.
+   - `/dashboard/reports` sayfası eklenmiş; hızlı zaman filtreleri (7 gün, 30 gün, 90 gün, özel tarih aralığı) ve `recharts` grafik kütüphanesi ile zenginleştirilmiştir.
+   - Admin panelinde (`/admin`) tüm kliniklerin son 30 günlük randevu ve çağrı hacmini karşılaştıran platform aktivite tablosu eklenmiştir (`GET /api/admin/analytics/clinics-overview`).
+4. **Multi-Tenant Güvenliği ve KVKK Uyumu:**
+   - Sekreter analitik rotası (`GET /api/analytics/summary`) oturumdaki `req.clinicId` değerini zorunlu kılar; client'tan gelen parametrelere güvenilmez.
+   - Dönen JSON şemasında hasta kimliği, adı, telefonu veya tıbbi şikayeti bulunmaz; yalnızca sayısal ve kategorik agregasyonlar yer alır.
+
+**Alternatifler:**
+- *Tüm randevuları bellek üzerinde JS ile filtrelemek:* Küçük kliniklerde çalışabilir ancak 10.000+ randevusu olan merkezlerde Vercel serverless fonksiyonunu kilitler ve yüksek gecikmeye neden olurdu.
+- *UTC bazlı doğrudan gruplama:* Gece yarısı civarındaki randevularda yanlış gün istatistiklerine yol açardı.
+
+**Sonuçlar:**
+- (+) Tam veritabanı düzeyinde optimize, 100ms altında yanıt veren raporlama motoru kazanıldı.
+- (+) No-Show ve doluluk formülleri matematiksel ve birim testlerle doğrulandı.
+- (+) KVKK ve multi-tenant sınırları sıfır veri sızıntısıyla korundu.

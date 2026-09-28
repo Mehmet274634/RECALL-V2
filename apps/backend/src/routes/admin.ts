@@ -4,11 +4,26 @@ import { z } from 'zod';
 import { prisma } from '../lib/db/client.js';
 import { requireAdmin, getClerkClient, type AuthenticatedRequest } from '../lib/auth/clerk.js';
 import { generatePlaceholderPhoneNumber } from '../lib/clinic/placeholder-phone.js';
+import { getAdminClinicsAnalyticsOverview } from '../lib/analytics/summary.js';
 
 export const adminRouter = Router();
 
 // Enforce Admin role across all /api/admin routes
 adminRouter.use(requireAdmin);
+
+/**
+ * GET /api/admin/analytics/clinics-overview
+ * Platform-wide analytics comparison across clinics (last 30 days).
+ */
+adminRouter.get('/analytics/clinics-overview', async (_req: AuthenticatedRequest, res) => {
+  try {
+    const data = await getAdminClinicsAnalyticsOverview();
+    res.json(data);
+  } catch (error) {
+    console.error('[admin:analytics] Error fetching clinics overview:', error);
+    res.status(500).json({ error: 'Klinik analitik özeti alınırken hata oluştu.' });
+  }
+});
 
 /**
  * GET /api/admin/clinics

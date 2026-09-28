@@ -1,7 +1,48 @@
 # PROGRESS.md
 
-> **Son güncelleme:** 2026-09-27 (Hata İzleme — Sentry Entegrasyonu ve KVKK Maskelemesi Tamamlandı)
+> **Son güncelleme:** 2026-09-28 (Faz 5 — Analitik / Raporlama Modülü, Saat Dilimi Gruplaması ve No-Show Metrikleri Tamamlandı)
 > **Bu dosya AKTİF OLARAK GÜNCELLENİR.** Kronolojik geliştirme günlüğüdür — en yeni girdi en üstte. Yeni bir session'a başlarken son 1-2 girdiyi okuyarak kaldığın yerden devam edebilirsin.
+
+---
+
+## 2026-09-28 — Faz 5: Analitik & Raporlama Modülü (Recharts, No-Show Metrikleri, Timezone Gruplaması ve Admin Platform Özeti)
+
+**Ne yapıldı:**
+1. **Veri Modeli ve İndeks İyileştirmeleri:**
+   - `CallLog` modeline `durationSeconds` (çağrı süresi) ve `category` (Randevu Talebi, İptal, Genel Bilgi) alanları eklendi.
+   - Analitik sorgu performansı için `appointments([clinicId, startsAt])`, `appointments([clinicId, status])`, `call_logs([clinicId, createdAt])`, `call_logs([clinicId, category])` indeksleri eklendi.
+   - Prisma migrasyonu (`20260928085101_add_analytics_indexes_and_fields`) Neon PostgreSQL veritabanına uygulandı.
+   - `NO_SHOW` (Gelmedi) durumu doğrulandı; sekreter randevu tablosuna mevcut Tamamla/İptal/Yeniden Planla aksiyonlarının yanına kehribar renkli "Gelmedi" butonu (`UserX`) eklendi.
+2. **Backend Analitik Motoru (`apps/backend/src/lib/analytics/summary.ts` & `src/routes/analytics.ts`):**
+   - `GET /api/analytics/summary?from=YYYY-MM-DD&to=YYYY-MM-DD`: `requireAuth` ile korunan, kesin multi-tenant güvenli (`req.clinicId`) analitik uç noktası.
+   - Maksimum 366 gün (1 yıl) tarih aralığı koruması eklendi.
+   - Saat dilimi doğruluğu: Prisma UTC `timestamp without time zone` verileri PostgreSQL seviyesinde `(starts_at AT TIME ZONE 'UTC') AT TIME ZONE Clinic.timezone` (Europe/Istanbul) ile dönüştürüldü; gece yarısı (23:30 vs. 00:30 TR) randevularının doğru takvim günlerine düşmesi sağlandı.
+   - Ağır hesaplamalar DB seviyesinde `$queryRaw` ile yapıldı; Node.js belleğinde satır satır sayma engellendi.
+   - Formüller:
+     - No-Show Oranı: `Gelmedi / (Tamamlandı + Gelmedi) * 100` (Payda 0 ise %0.0).
+     - İptal Oranı: `İptal / Toplam * 100`.
+     - Çağrı Randevu Dönüşüm Oranı: `Vapi Randevuları / Toplam Çağrı * 100`.
+     - Hekim Doluluk Oranı: Hekimin çalışma saatleri JSON'ından aktif mesai günleri taranıp toplam slot kapasitesi hesaplandı (`Aktif Randevu / Toplam Slot * 100`).
+   - `GET /api/admin/analytics/clinics-overview`: Admin için platform geneli son 30 gün randevu ve çağrı hacmi karşılaştırma rotası (`requireAdmin` korumalı).
+3. **Frontend Raporlar Sayfası (`/dashboard/reports`) & Admin Karşılaştırma Tablosu:**
+   - `recharts` grafik kütüphanesi entegre edildi.
+   - Sol menüye "Raporlar" sekmesi (`BarChart3` ikonu) ve `/dashboard/reports` rotası eklendi.
+   - 4 Özet KPI Kartı: Toplam Randevu, No-Show Oranı, İptal Oranı, Çağrı Randevu Dönüşüm Oranı.
+   - Zengin interaktif grafikler: Günlük Randevu Trendi (AreaChart), Durum Dağılımı Donut (PieChart), Doktor Doluluk & Hacim (BarChart), Kanal Dağılımı (Vapi AI vs Manuel), En Yoğun Saatler & Günler, Arama Sebepleri & Süre Detayları.
+   - Zaman filtresi: 7 gün, 30 gün (varsayılan), 90 gün ve özel takvim aralığı seçici.
+   - Sıfıra bölme ve boş durum (empty state) dayanıklılığı: Yeni kliniklerde `NaN%` veya çökme yaşanmaz.
+   - Admin panelinde (`AdminClinicsPage.tsx`) "Klinik Aktivite Karşılaştırması (Son 30 Gün)" tablosu eklendi.
+4. **KVKK / Kişisel Veri Koruma Kuralı:**
+   - Raporlama API yanıtlarında ve ekranlarında hasta adı, soyadı, telefon numarası veya sağlık şikayeti yer almaz; tamamen anonim/toplu istatistikler sunulur.
+5. **Kapsamlı Doğrulama ve Test (`scripts/test-analytics-verification.ts`):**
+   - Recall ve Anadolu klinikleri üzerinde farklı kanal, durum ve saatlerde seed verisi oluşturuldu.
+   - No-show (%25.0), iptal (%16.7), dönüşüm (%50.0) ve süre (105 sn) formülleri otomatik testle doğrulandı.
+   - Tenant izolasyonu test edildi: Recall sekreterine Anadolu'nun randevu veya çağrı verisinin sızmadığı kanıtlandı.
+   - Timezone testi: 23:30 TR ve 00:30 TR randevularının yerel takvimde iki ayrı güne başarıyla ayrıldığı doğrulandı.
+   - Boş veri testi: Verisi olmayan klinikte tüm oranların hatasız 0 döndüğü kanıtlandı.
+   - Admin platform özeti tüm klinikler için doğrulandı.
+6. **Dokümantasyon:**
+   - `DECISIONS.md` dosyasına `ADR-020` eklendi.
 
 ---
 

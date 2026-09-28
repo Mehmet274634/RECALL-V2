@@ -246,6 +246,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
+
+  // Analytics endpoints
+  getAnalyticsSummary: (params?: { from?: string; to?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.append('from', params.from);
+    if (params?.to) searchParams.append('to', params.to);
+    const queryString = searchParams.toString();
+    return request<AnalyticsSummary>(`/api/analytics/summary${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getAdminClinicsAnalytics: () =>
+    request<AdminClinicsAnalyticsOverview>('/api/admin/analytics/clinics-overview'),
 };
 
 export interface AdminDoctorInput {
@@ -291,3 +303,92 @@ export interface AdminClinicItem {
     workingHours: unknown;
   }>;
 }
+
+export interface AnalyticsSummary {
+  period: {
+    from: string;
+    to: string;
+    timezone: string;
+    daysCount: number;
+  };
+  appointments: {
+    total: number;
+    scheduled: number;
+    completed: number;
+    cancelled: number;
+    noShow: number;
+    noShowRate: number;
+    cancellationRate: number;
+    channels: {
+      vapiAi: number;
+      panelManual: number;
+    };
+    dailyTrend: Array<{
+      date: string;
+      total: number;
+      completed: number;
+      cancelled: number;
+      noShow: number;
+      scheduled: number;
+      vapiAi: number;
+      panelManual: number;
+    }>;
+    doctors: Array<{
+      id: string;
+      name: string;
+      specialty: string | null;
+      totalAppointments: number;
+      completed: number;
+      cancelled: number;
+      noShow: number;
+      scheduled: number;
+      totalAvailableSlots: number;
+      occupancyRate: number;
+    }>;
+    busiestDays: Array<{
+      dayOfWeek: number;
+      dayName: string;
+      count: number;
+    }>;
+    peakHours: Array<{
+      hour: number;
+      hourLabel: string;
+      count: number;
+    }>;
+  };
+  calls: {
+    totalCalls: number;
+    averageDurationSeconds: number;
+    conversionRate: number;
+    categories: Array<{
+      category: string;
+      count: number;
+      percentage: number;
+    }>;
+    endedReasons: Array<{
+      reason: string;
+      count: number;
+      percentage: number;
+    }>;
+    hourlyDistribution: Array<{
+      hour: number;
+      hourLabel: string;
+      count: number;
+    }>;
+  };
+}
+
+export interface AdminClinicsAnalyticsOverview {
+  clinics: Array<{
+    id: string;
+    name: string;
+    phoneNumber: string;
+    doctorsCount: number;
+    patientsCount: number;
+    appointmentsCountLast30Days: number;
+    completedAppointmentsCountLast30Days: number;
+    callsCountLast30Days: number;
+    createdAt: string;
+  }>;
+}
+

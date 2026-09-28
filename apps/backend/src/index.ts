@@ -12,6 +12,7 @@ import { doctorsRouter } from './routes/doctors.js';
 import { statsRouter } from './routes/stats.js';
 import { clinicRouter } from './routes/clinic.js';
 import { adminRouter } from './routes/admin.js';
+import { analyticsRouter } from './routes/analytics.js';
 
 // --- Initialize Sentry before all imports/express app setup ---
 initBackendSentry();
@@ -56,6 +57,7 @@ app.use('/api/doctors', doctorsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/clinic', clinicRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/analytics', analyticsRouter);
 
 // --- Sentry Error Handling Middleware ---
 Sentry.setupExpressErrorHandler(app);
