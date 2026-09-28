@@ -1,4 +1,5 @@
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
+import { useUser, useClerk } from '@clerk/clerk-react';
 import {
   Stethoscope,
   Calendar,
@@ -11,6 +12,8 @@ import {
   BarChart3,
 } from 'lucide-react';
 
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 const navItems = [
   { to: '/dashboard', label: 'Randevular', icon: Calendar },
   { to: '/dashboard/calls', label: 'Çağrı Kayıtları', icon: Phone },
@@ -21,14 +24,17 @@ const navItems = [
 
 export default function SecretaryLayout() {
   const navigate = useNavigate();
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
-  const handleLogout = () => {
-    // If Clerk is active, sign out
+  const displayName = user?.fullName || user?.firstName || 'Klinik Sekreteri';
+  const displayEmail = user?.primaryEmailAddress?.emailAddress || 'sekreter@recall.health';
+  const initial = (displayName[0] || 'S').toUpperCase();
+
+  const handleLogout = async () => {
     try {
-      const clerk = (window as unknown as { Clerk?: { signOut: () => Promise<void> } }).Clerk;
-      if (clerk?.signOut) {
-        clerk.signOut().then(() => navigate('/login'));
-        return;
+      if (CLERK_PUBLISHABLE_KEY && signOut) {
+        await signOut();
       }
     } catch {
       // ignore
@@ -96,11 +102,11 @@ export default function SecretaryLayout() {
           {/* User profile info */}
           <div className="px-3 py-1 flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-full bg-accent text-accent-foreground flex items-center justify-center font-bold text-xs">
-              S
+              {initial}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-white truncate">Klinik Sekreteri</div>
-              <div className="text-[10px] text-white/50 truncate">sekreter@recall.health</div>
+              <div className="text-xs font-semibold text-white truncate">{displayName}</div>
+              <div className="text-[10px] text-white/50 truncate">{displayEmail}</div>
             </div>
           </div>
 

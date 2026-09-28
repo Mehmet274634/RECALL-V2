@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
+import { useUser, useClerk } from '@clerk/clerk-react';
 import {
   Building2,
   PlusCircle,
@@ -13,6 +14,8 @@ import {
 
 import { getUserRole, setDevRole } from '../../lib/auth';
 
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 const adminNavItems = [
   { to: '/admin', label: 'Tüm Klinikler', icon: Building2, end: true },
   { to: '/admin/new', label: 'Yeni Klinik Ekle', icon: PlusCircle, end: false },
@@ -20,6 +23,8 @@ const adminNavItems = [
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [role, setRole] = useState<'admin' | 'secretary'>(() => getUserRole());
 
   useEffect(() => {
@@ -34,12 +39,10 @@ export default function AdminLayout() {
     window.location.reload();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     try {
-      const clerk = (window as unknown as { Clerk?: { signOut: () => Promise<void> } }).Clerk;
-      if (clerk?.signOut) {
-        clerk.signOut().then(() => navigate('/login'));
-        return;
+      if (CLERK_PUBLISHABLE_KEY && signOut) {
+        await signOut();
       }
     } catch {
       // ignore
@@ -162,6 +165,11 @@ export default function AdminLayout() {
               <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
               Sistem Yöneticisi (Admin)
             </div>
+            {user?.primaryEmailAddress?.emailAddress && (
+              <div className="text-[10px] text-white/40 truncate mt-1">
+                {user.primaryEmailAddress.emailAddress}
+              </div>
+            )}
             {/* Dev role switcher (strictly rendered in DEV mode only) */}
             {import.meta.env.DEV && (
               <button

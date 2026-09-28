@@ -1,21 +1,35 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { SignIn } from '@clerk/clerk-react';
 import { Stethoscope, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
-/**
- * LoginPage — Clerk will replace the form logic in Faz 0.8.
- * This is a visual skeleton following Design System specs:
- * - Primary brand colors
- * - Plus Jakarta Sans
- * - Form fields with focus:ring-2 primary
- * - rounded-lg inputs, rounded-xl buttons
- */
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('sekreter@recall.health');
   const [password, setPassword] = useState('••••••••');
+
+  if (CLERK_PUBLISHABLE_KEY) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-6 py-12">
+        <div className="flex flex-col items-center mb-6">
+          <Link to="/" className="flex items-center gap-2.5 mb-4">
+            <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-md">
+              <Stethoscope className="w-6 h-6 text-primary-foreground" />
+            </div>
+          </Link>
+          <h1 className="text-2xl font-bold text-foreground">Hoş Geldiniz</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Klinik veya yönetici hesabınızla giriş yapın
+          </p>
+        </div>
+        <SignIn routing="path" path="/login" signUpUrl="/sign-up" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center px-6 py-12">
@@ -34,7 +48,7 @@ export default function LoginPage() {
           </Link>
           <h1 className="text-2xl font-bold text-foreground">Hoş Geldiniz</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Klinik panelinize giriş yapın
+            Klinik panelinize giriş yapın (Geliştirici Modu)
           </p>
         </div>
 
