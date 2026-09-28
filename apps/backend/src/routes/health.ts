@@ -4,36 +4,18 @@ import { prisma } from '../lib/db/client.js';
 export const healthRouter = Router();
 
 healthRouter.get('/', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   try {
-    const doctors = await prisma.doctor.findMany({
-      select: { id: true, name: true, specialty: true },
-      orderBy: { name: 'asc' },
-    });
-    const clinics = await prisma.clinic.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-
-    res.json({
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({
       status: 'ok',
-      timestamp: new Date().toISOString(),
-      service: 'recall-backend',
-      database: {
-        connected: true,
-        clinicsCount: clinics.length,
-        doctorsCount: doctors.length,
-        clinics,
-        doctors,
-      },
+      database: true,
     });
-  } catch (error: any) {
-    res.status(500).json({
+  } catch {
+    res.status(503).json({
       status: 'error',
-      service: 'recall-backend',
-      database: {
-        connected: false,
-        error: 'Database connection failed',
-      },
+      database: false,
     });
   }
 });
+
