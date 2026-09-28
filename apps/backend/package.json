@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:seed": "tsx scripts/seed.ts",
-    "clinic:onboard": "tsx scripts/onboard-clinic.ts"
+    "clinic:onboard": "tsx scripts/onboard-clinic.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@clerk/backend": "^1.20.0",
