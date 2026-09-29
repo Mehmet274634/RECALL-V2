@@ -190,6 +190,8 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
   const toolCallList = message?.toolCallList as Array<Record<string, unknown>> | undefined;
   const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
   const callId = (call?.id || message?.callId) as string | undefined;
+  const customer = (message?.customer || call?.customer) as Record<string, unknown> | undefined;
+  const customerNumber = (customer?.number as string | undefined)?.trim();
 
   if (!toolCallList || toolCallList.length === 0) {
     console.warn('[vapi] tool-calls received but toolCallList is empty');
@@ -234,22 +236,22 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
 
           case 'book_appointment':
           case 'bookAppointment':
-            resultText = await handleBookAppointment(args, callId, clinicId);
+            resultText = await handleBookAppointment(args, callId, clinicId, customerNumber);
             break;
 
           case 'lookup_appointment':
           case 'lookupAppointment':
-            resultText = await handleLookupAppointment(args, clinicId);
+            resultText = await handleLookupAppointment(args, clinicId, customerNumber);
             break;
 
           case 'cancel_appointment':
           case 'cancelAppointment':
-            resultText = await handleCancelAppointment(args, clinicId);
+            resultText = await handleCancelAppointment(args, clinicId, customerNumber);
             break;
 
           case 'reschedule_appointment':
           case 'rescheduleAppointment':
-            resultText = await handleRescheduleAppointment(args, clinicId);
+            resultText = await handleRescheduleAppointment(args, clinicId, customerNumber);
             break;
 
           case 'transfer_call':

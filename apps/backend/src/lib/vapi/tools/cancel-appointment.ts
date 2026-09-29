@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { cancelAppointment } from '../../scheduling/cancellation.js';
-import { isValidPhone } from '../../phone.js';
+import { validateAndFormatTurkishPhone } from '../../phone.js';
 
 const cancelAppointmentSchema = z.object({
   appointmentId: z.string().optional(),
@@ -13,7 +13,11 @@ const cancelAppointmentSchema = z.object({
 /**
  * Tool handler: cancel_appointment / cancelAppointment
  */
-export async function handleCancelAppointment(args: unknown, clinicId?: string): Promise<string> {
+export async function handleCancelAppointment(
+  args: unknown,
+  clinicId?: string,
+  defaultCustomerNumber?: string,
+): Promise<string> {
   const parsed = cancelAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
@@ -26,20 +30,22 @@ export async function handleCancelAppointment(args: unknown, clinicId?: string):
     patient_phone,
   } = parsed.data;
 
-  const phone = (patientPhone || patient_phone || '').trim();
-  if (!phone) {
+  const explicitPhone = (patientPhone || patient_phone || '').trim();
+  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
+  if (!candidatePhone) {
     return 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
   }
 
-  if (!isValidPhone(phone)) {
-    return 'İptal işlemi için belirttiğiniz telefon numarası geçersizdir. Lütfen başında sıfır ile cep telefonu numaranızı söyleyiniz.';
+  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
+  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
+    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
   }
 
   try {
     const result = await cancelAppointment({
       clinicId,
       appointmentId: appointmentId || appointment_id,
-      patientPhone: phone,
+      patientPhone: phoneValidation.formattedPhone,
     });
     return result.message;
   } catch (error) {

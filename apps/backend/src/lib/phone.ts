@@ -75,3 +75,60 @@ export function isValidPhone(raw: string, defaultCountry: 'TR' | string = 'TR'):
 
   return false;
 }
+
+/**
+ * Strict Turkish mobile phone validator & normalizer for Vapi tool handlers.
+ * - Strips whitespace, dashes, parentheses, dots.
+ * - Removes leading +90 or 90.
+ * - If 10 digits starting with 5: prepends '0' -> exactly 11 digits starting with '05'.
+ * - Must be exactly 11 digits and start with '05'.
+ * - Never guesses or truncates/pads invalid lengths (e.g. 13-digit numbers).
+ */
+export function validateAndFormatTurkishPhone(rawPhone?: string | null): {
+  isValid: boolean;
+  formattedPhone?: string; // 11-digit "05..."
+  e164Phone?: string;      // "+905..."
+  errorMessage?: string;
+} {
+  if (!rawPhone || typeof rawPhone !== 'string' || !rawPhone.trim()) {
+    return {
+      isValid: false,
+      errorMessage: 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.',
+    };
+  }
+
+  // 1. Strip spaces, dashes, dots, parentheses
+  let cleaned = rawPhone.trim().replace(/[\s\-\(\)\.]/g, '');
+
+  // 2. Remove +90 or leading 90 if international format
+  if (cleaned.startsWith('+90')) {
+    cleaned = cleaned.slice(3);
+  } else if (cleaned.startsWith('90') && cleaned.length >= 12) {
+    cleaned = cleaned.slice(2);
+  }
+
+  // 3. Keep digits only
+  const digits = cleaned.replace(/\D/g, '');
+
+  // 4. Handle 10-digit number starting with 5 (e.g., 5444217088 -> 05444217088)
+  let standard11 = digits;
+  if (digits.length === 10 && digits.startsWith('5')) {
+    standard11 = `0${digits}`;
+  }
+
+  // 5. Must be exactly 11 digits and start with '05'
+  if (standard11.length === 11 && standard11.startsWith('05')) {
+    return {
+      isValid: true,
+      formattedPhone: standard11,
+      e164Phone: `+90${standard11.slice(1)}`,
+    };
+  }
+
+  // Failed: more or fewer than 11 digits, or doesn't start with 05
+  return {
+    isValid: false,
+    errorMessage: 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.',
+  };
+}
+

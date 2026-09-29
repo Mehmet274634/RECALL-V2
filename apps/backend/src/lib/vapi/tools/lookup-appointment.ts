@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { lookupAppointment } from '../../scheduling/lookup.js';
-import { isValidPhone } from '../../phone.js';
+import { validateAndFormatTurkishPhone } from '../../phone.js';
 
 const lookupAppointmentSchema = z.object({
   patientPhone: z.string().optional(),
@@ -11,27 +11,33 @@ const lookupAppointmentSchema = z.object({
 /**
  * Tool handler: lookup_appointment / lookupAppointment
  */
-export async function handleLookupAppointment(args: unknown, clinicId?: string): Promise<string> {
+export async function handleLookupAppointment(
+  args: unknown,
+  clinicId?: string,
+  defaultCustomerNumber?: string,
+): Promise<string> {
   const parsed = lookupAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
   }
 
   const { patientPhone, patient_phone } = parsed.data;
-  const resolvedPhone = (patientPhone || patient_phone || '').trim();
+  const explicitPhone = (patientPhone || patient_phone || '').trim();
+  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
 
-  if (!resolvedPhone) {
+  if (!candidatePhone) {
     return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
   }
 
-  if (!isValidPhone(resolvedPhone)) {
-    return 'Belirttiğiniz telefon numarası geçersizdir. Lütfen geçerli bir telefon numarası belirtiniz (örneğin: 0532 123 45 67).';
+  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
+  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
+    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
   }
 
   try {
     const result = await lookupAppointment({
       clinicId,
-      patientPhone: resolvedPhone,
+      patientPhone: phoneValidation.formattedPhone,
     });
     return result.message;
   } catch (error) {

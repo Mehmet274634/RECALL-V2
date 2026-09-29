@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { rescheduleAppointment } from '../../scheduling/cancellation.js';
-import { isValidPhone } from '../../phone.js';
+import { validateAndFormatTurkishPhone } from '../../phone.js';
 
 const rescheduleAppointmentSchema = z.object({
   appointmentId: z.string().optional(),
@@ -19,7 +19,11 @@ const rescheduleAppointmentSchema = z.object({
 /**
  * Tool handler: reschedule_appointment / rescheduleAppointment
  */
-export async function handleRescheduleAppointment(args: unknown, clinicId?: string): Promise<string> {
+export async function handleRescheduleAppointment(
+  args: unknown,
+  clinicId?: string,
+  defaultCustomerNumber?: string,
+): Promise<string> {
   const parsed = rescheduleAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı ve yeni tarih/saati belirtiniz.';
@@ -38,13 +42,15 @@ export async function handleRescheduleAppointment(args: unknown, clinicId?: stri
     time,
   } = parsed.data;
 
-  const phone = (patientPhone || patient_phone || '').trim();
-  if (!phone) {
+  const explicitPhone = (patientPhone || patient_phone || '').trim();
+  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
+  if (!candidatePhone) {
     return 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı belirtiniz.';
   }
 
-  if (!isValidPhone(phone)) {
-    return 'Randevu saati değişikliği için belirttiğiniz telefon numarası geçersizdir. Lütfen başında sıfır ile cep telefonu numaranızı söyleyiniz.';
+  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
+  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
+    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
   }
 
   const targetDate = newDate || new_date || date;
@@ -58,7 +64,7 @@ export async function handleRescheduleAppointment(args: unknown, clinicId?: stri
     const result = await rescheduleAppointment({
       clinicId,
       appointmentId: appointmentId || appointment_id,
-      patientPhone: phone,
+      patientPhone: phoneValidation.formattedPhone,
       newDate: targetDate,
       newTime: targetTime,
     });

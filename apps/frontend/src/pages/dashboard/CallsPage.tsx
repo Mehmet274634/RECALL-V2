@@ -45,19 +45,37 @@ export default function CallsPage() {
   };
 
   const getCategoryBadge = (category: string | null | undefined, summary: string | null) => {
-    const cat = category || summary || '';
-    if (cat.includes('Randevu Talebi')) {
+    // 1. Oncelikli olarak veritabanina kaydedilen category alanindan oku
+    if (category) {
+      if (category.includes('İptal')) {
+        return <span className="badge-escalated px-2.5 py-0.5 rounded-full text-xs font-semibold">Randevu İptali</span>;
+      }
+      if (category.includes('Değişikliği') || category.includes('Değişiklik') || category.includes('Erteleme')) {
+        return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Değişiklik</span>;
+      }
+      if (category.includes('Randevu Talebi') || category.includes('Randevu')) {
+        return <span className="badge-active px-2.5 py-0.5 rounded-full text-xs font-semibold">Randevu Talebi</span>;
+      }
+      if (category.includes('Genel Bilgi') || category.includes('Bilgi')) {
+        return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Genel Bilgi</span>;
+      }
+    }
+
+    // 2. Yedek: Eski kayitlar veya ozette "Kategori: ..." iceren metinler icin geriye donuk uyumluluk
+    const sum = summary || '';
+    if (sum.includes('Randevu Talebi')) {
       return <span className="badge-active px-2.5 py-0.5 rounded-full text-xs font-semibold">Randevu Talebi</span>;
     }
-    if (cat.includes('İptal')) {
+    if (sum.includes('İptal')) {
       return <span className="badge-escalated px-2.5 py-0.5 rounded-full text-xs font-semibold">Randevu İptali</span>;
     }
-    if (cat.includes('Değişikliği') || cat.includes('Değişiklik')) {
+    if (sum.includes('Değişikliği') || sum.includes('Değişiklik') || sum.includes('ertelendi')) {
       return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Değişiklik</span>;
     }
-    if (cat.includes('Genel Bilgi') || cat.includes('Bilgi')) {
+    if (sum.includes('Genel Bilgi') || sum.includes('Bilgi') || !summary) {
       return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Genel Bilgi</span>;
     }
+
     return <span className="bg-surface text-muted-foreground px-2.5 py-0.5 rounded-full text-xs font-semibold">Arama</span>;
   };
 

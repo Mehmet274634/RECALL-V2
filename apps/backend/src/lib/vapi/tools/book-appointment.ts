@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { bookAppointment } from '../../scheduling/booking.js';
-import { isValidPhone } from '../../phone.js';
+import { validateAndFormatTurkishPhone } from '../../phone.js';
 
 const bookAppointmentSchema = z.object({
   patientName: z.string().optional(),
@@ -22,6 +22,7 @@ export async function handleBookAppointment(
   args: unknown,
   callId?: string,
   clinicId?: string,
+  defaultCustomerNumber?: string,
 ): Promise<string> {
   const parsed = bookAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
@@ -41,7 +42,8 @@ export async function handleBookAppointment(
   } = parsed.data;
 
   const resolvedName = (patientName || patient_name || '').trim();
-  const resolvedPhone = (patientPhone || patient_phone || '').trim();
+  const explicitPhone = (patientPhone || patient_phone || '').trim();
+  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
   const resolvedDate = (date || '').trim();
   const resolvedTime = (time || '').trim();
 
@@ -49,12 +51,13 @@ export async function handleBookAppointment(
     return 'Randevu oluşturabilmek için lütfen hastanın adını ve soyadını belirtiniz.';
   }
 
-  if (!resolvedPhone) {
+  if (!candidatePhone) {
     return 'Randevu kaydı için lütfen telefon numaranızı belirtiniz.';
   }
 
-  if (!isValidPhone(resolvedPhone)) {
-    return 'Belirttiğiniz telefon numarası geçersizdir. Lütfen geçerli bir cep telefonu numaranızı belirtiniz (örneğin: 0532 123 45 67).';
+  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
+  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
+    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
   }
 
   if (!resolvedDate || !resolvedTime) {
@@ -65,7 +68,7 @@ export async function handleBookAppointment(
     const result = await bookAppointment({
       clinicId,
       patientName: resolvedName,
-      patientPhone: resolvedPhone,
+      patientPhone: phoneValidation.formattedPhone,
       doctorName: doctorName || doctor_name,
       specialty,
       date: resolvedDate,
