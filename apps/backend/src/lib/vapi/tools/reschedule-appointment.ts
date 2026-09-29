@@ -8,8 +8,6 @@ const rescheduleAppointmentSchema = z.object({
   appointment_id: z.string().optional(),
   patientPhone: z.string().optional(),
   patient_phone: z.string().optional(),
-  patientName: z.string().optional(),
-  patient_name: z.string().optional(),
   newDate: z.string().optional(),
   new_date: z.string().optional(),
   date: z.string().optional(),
@@ -24,7 +22,7 @@ const rescheduleAppointmentSchema = z.object({
 export async function handleRescheduleAppointment(args: unknown, clinicId?: string): Promise<string> {
   const parsed = rescheduleAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
-    return 'Randevu saatinizi değiştirmek için lütfen yeni tarih ve saati belirtiniz.';
+    return 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı ve yeni tarih/saati belirtiniz.';
   }
 
   const {
@@ -32,8 +30,6 @@ export async function handleRescheduleAppointment(args: unknown, clinicId?: stri
     appointment_id,
     patientPhone,
     patient_phone,
-    patientName,
-    patient_name,
     newDate,
     new_date,
     date,
@@ -43,7 +39,11 @@ export async function handleRescheduleAppointment(args: unknown, clinicId?: stri
   } = parsed.data;
 
   const phone = (patientPhone || patient_phone || '').trim();
-  if (phone && !isValidPhone(phone)) {
+  if (!phone) {
+    return 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı belirtiniz.';
+  }
+
+  if (!isValidPhone(phone)) {
     return 'Randevu saati değişikliği için belirttiğiniz telefon numarası geçersizdir. Lütfen başında sıfır ile cep telefonu numaranızı söyleyiniz.';
   }
 
@@ -58,8 +58,7 @@ export async function handleRescheduleAppointment(args: unknown, clinicId?: stri
     const result = await rescheduleAppointment({
       clinicId,
       appointmentId: appointmentId || appointment_id,
-      patientPhone: patientPhone || patient_phone,
-      patientName: patientName || patient_name,
+      patientPhone: phone,
       newDate: targetDate,
       newTime: targetTime,
     });

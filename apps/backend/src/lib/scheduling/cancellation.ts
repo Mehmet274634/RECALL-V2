@@ -1,7 +1,7 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
-import { parseIstanbulDate } from '../date-utils.js';
+import { parseIstanbulDate, formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 
 export interface CancelAppointmentParams {
   clinicId?: string;
@@ -26,44 +26,48 @@ export interface ModificationResult {
 }
 
 /**
- * Cancels an existing scheduled appointment.
+ * Cancels an existing scheduled appointment strictly by appointmentId or verified patient phone.
  */
 export async function cancelAppointment(params: CancelAppointmentParams): Promise<ModificationResult> {
   const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
-  if (params.patientPhone && !isValidPhone(params.patientPhone)) {
+  if (!params.patientPhone) {
+    return {
+      success: false,
+      message: 'Randevunuzu iptal edebilmek için lütfen telefon numaranızı belirtiniz.',
+    };
+  }
+
+  if (!isValidPhone(params.patientPhone)) {
     return {
       success: false,
       message: 'Geçersiz telefon numarası. Lütfen geçerli bir telefon numarası belirtiniz (örn: 0532 123 45 67).',
     };
   }
 
+  const normPhone = normalizePhone(params.patientPhone);
   let appointment = null;
 
   if (params.appointmentId) {
     appointment = await prisma.appointment.findFirst({
-      where: { id: params.appointmentId, clinicId, status: 'SCHEDULED' },
+      where: {
+        id: params.appointmentId,
+        clinicId,
+        status: 'SCHEDULED',
+        patient: { phoneNumber: normPhone },
+      },
       include: { doctor: true, patient: true },
     });
-  }
 
-  if (!appointment && params.patientPhone) {
-    const normPhone = normalizePhone(params.patientPhone);
+    if (!appointment) {
+      return {
+        success: false,
+        message: 'Belirttiğiniz telefon numarası ile randevu kaydı eşleşmedi.',
+      };
+    }
+  } else {
     const patient = await prisma.patient.findFirst({
       where: { clinicId, phoneNumber: normPhone },
-    });
-    if (patient) {
-      appointment = await prisma.appointment.findFirst({
-        where: { clinicId, patientId: patient.id, status: 'SCHEDULED' },
-        include: { doctor: true, patient: true },
-        orderBy: { startsAt: 'asc' },
-      });
-    }
-  }
-
-  if (!appointment && params.patientName) {
-    const patient = await prisma.patient.findFirst({
-      where: { clinicId, fullName: { contains: params.patientName, mode: 'insensitive' } },
     });
     if (patient) {
       appointment = await prisma.appointment.findFirst({
@@ -77,7 +81,7 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
   if (!appointment) {
     return {
       success: false,
-      message: 'İptal edilecek aktif bir randevu bulunamadı.',
+      message: 'Belirttiğiniz telefon numarasına ait iptal edilecek aktif bir randevu bulunamadı.',
     };
   }
 
@@ -86,11 +90,8 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
     data: { status: 'CANCELLED' },
   });
 
-  const dateFormatted = appointment.startsAt.toLocaleDateString('tr-TR', {
-    day: 'numeric',
-    month: 'long',
-  });
-  const timeFormatted = `${appointment.startsAt.getHours().toString().padStart(2, '0')}:${appointment.startsAt.getMinutes().toString().padStart(2, '0')}`;
+  const dateFormatted = formatIstanbulDate(appointment.startsAt);
+  const timeFormatted = formatIstanbulTime(appointment.startsAt);
 
   return {
     success: true,
@@ -104,24 +105,41 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
 export async function rescheduleAppointment(params: RescheduleAppointmentParams): Promise<ModificationResult> {
   const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
-  if (params.patientPhone && !isValidPhone(params.patientPhone)) {
+  if (!params.patientPhone) {
+    return {
+      success: false,
+      message: 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı belirtiniz.',
+    };
+  }
+
+  if (!isValidPhone(params.patientPhone)) {
     return {
       success: false,
       message: 'Geçersiz telefon numarası. Lütfen geçerli bir telefon numarası belirtiniz (örn: 0532 123 45 67).',
     };
   }
 
+  const normPhone = normalizePhone(params.patientPhone);
   let appointment = null;
 
   if (params.appointmentId) {
     appointment = await prisma.appointment.findFirst({
-      where: { id: params.appointmentId, clinicId, status: 'SCHEDULED' },
+      where: {
+        id: params.appointmentId,
+        clinicId,
+        status: 'SCHEDULED',
+        patient: { phoneNumber: normPhone },
+      },
       include: { doctor: true, patient: true },
     });
-  }
 
-  if (!appointment && params.patientPhone) {
-    const normPhone = normalizePhone(params.patientPhone);
+    if (!appointment) {
+      return {
+        success: false,
+        message: 'Belirttiğiniz telefon numarası ile randevu kaydı eşleşmedi.',
+      };
+    }
+  } else {
     const patient = await prisma.patient.findFirst({
       where: { clinicId, phoneNumber: normPhone },
     });
@@ -137,7 +155,7 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
   if (!appointment) {
     return {
       success: false,
-      message: 'Değiştirilecek aktif bir randevu bulunamadı.',
+      message: 'Belirttiğiniz telefon numarasına ait değiştirilecek aktif bir randevu bulunamadı.',
     };
   }
 
@@ -204,12 +222,8 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
       });
     });
 
-    const dateFormatted = newStartsAt.toLocaleDateString('tr-TR', {
-      day: 'numeric',
-      month: 'long',
-      weekday: 'long',
-    });
-    const timeFormatted = `${newStartsAt.getHours().toString().padStart(2, '0')}:${newStartsAt.getMinutes().toString().padStart(2, '0')}`;
+    const dateFormatted = formatIstanbulDate(newStartsAt, { weekday: 'long' });
+    const timeFormatted = formatIstanbulTime(newStartsAt);
 
     return {
       success: true,

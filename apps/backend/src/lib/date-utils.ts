@@ -60,3 +60,34 @@ export function getIstanbulDayRange(dateStr: string): { startOfDay: Date; endOfD
 
   return { startOfDay, endOfDay };
 }
+
+/**
+ * Formats a Date object into a 24-hour time string ("HH:mm", e.g. "18:30")
+ * strictly in the Europe/Istanbul timezone (UTC+3), regardless of server local time.
+ */
+export function formatIstanbulTime(date: Date): string {
+  return date.toLocaleTimeString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+/**
+ * Formats a Date object into a readable Turkish date string (e.g. "29 Eylül Salı" or "29 Eylül")
+ * strictly in the Europe/Istanbul timezone (UTC+3), regardless of server local time.
+ */
+export function formatIstanbulDate(
+  date: Date,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  return date.toLocaleDateString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    day: 'numeric',
+    month: 'long',
+    weekday: options?.weekday,
+    ...options,
+  });
+}
+

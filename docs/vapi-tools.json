@@ -79,17 +79,13 @@
     "type": "function",
     "function": {
       "name": "lookup_appointment",
-      "description": "Hastanın telefon numarasını veya adını kullanarak sistemdeki aktif randevu kaydını sorgular.",
+      "description": "Hastanın doğrulanmış cep telefonu numarasını kullanarak sistemdeki aktif randevu kaydını sorgular.",
       "parameters": {
         "type": "object",
         "properties": {
           "patientPhone": {
             "type": "string",
             "description": "Randevusu sorgulanacak hastanın cep telefonu numarası (örn: 05321234567)"
-          },
-          "patientName": {
-            "type": "string",
-            "description": "Hastanın adı ve soyadı (opsiyonel)"
           }
         },
         "required": ["patientPhone"]
@@ -107,7 +103,7 @@
     "type": "function",
     "function": {
       "name": "cancel_appointment",
-      "description": "Hastanın mevcut randevusunu iptal eder.",
+      "description": "Hastanın doğrulanmış cep telefonu numarası ile mevcut randevusunu iptal eder.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -118,10 +114,6 @@
           "appointmentId": {
             "type": "string",
             "description": "İptal edilecek spesifik randevu ID'si (varsa opsiyonel)"
-          },
-          "patientName": {
-            "type": "string",
-            "description": "Hastanın adı ve soyadı (opsiyonel)"
           }
         },
         "required": ["patientPhone"]
@@ -139,7 +131,7 @@
     "type": "function",
     "function": {
       "name": "reschedule_appointment",
-      "description": "Hastanın mevcut randevusunu yeni bir tarih ve saate taşır (yeniden planlar / erteler).",
+      "description": "Hastanın doğrulanmış cep telefonu numarası ile mevcut randevusunu yeni bir tarih ve saate taşır (yeniden planlar / erteler).",
       "parameters": {
         "type": "object",
         "properties": {
@@ -158,10 +150,6 @@
           "appointmentId": {
             "type": "string",
             "description": "Taşınacak randevu ID'si (opsiyonel)"
-          },
-          "patientName": {
-            "type": "string",
-            "description": "Hastanın adı ve soyadı (opsiyonel)"
           }
         },
         "required": ["patientPhone", "newDate", "newTime"]

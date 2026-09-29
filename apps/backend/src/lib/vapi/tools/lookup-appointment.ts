@@ -6,8 +6,6 @@ import { isValidPhone } from '../../phone.js';
 const lookupAppointmentSchema = z.object({
   patientPhone: z.string().optional(),
   patient_phone: z.string().optional(),
-  patientName: z.string().optional(),
-  patient_name: z.string().optional(),
 });
 
 /**
@@ -16,26 +14,24 @@ const lookupAppointmentSchema = z.object({
 export async function handleLookupAppointment(args: unknown, clinicId?: string): Promise<string> {
   const parsed = lookupAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
-    return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı veya adınızı belirtiniz.';
+    return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
   }
 
-  const { patientPhone, patient_phone, patientName, patient_name } = parsed.data;
+  const { patientPhone, patient_phone } = parsed.data;
   const resolvedPhone = (patientPhone || patient_phone || '').trim();
-  const resolvedName = (patientName || patient_name || '').trim();
 
-  if (!resolvedPhone && !resolvedName) {
-    return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı veya adınızı belirtiniz.';
+  if (!resolvedPhone) {
+    return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
   }
 
-  if (resolvedPhone && !isValidPhone(resolvedPhone)) {
+  if (!isValidPhone(resolvedPhone)) {
     return 'Belirttiğiniz telefon numarası geçersizdir. Lütfen geçerli bir telefon numarası belirtiniz (örneğin: 0532 123 45 67).';
   }
 
   try {
     const result = await lookupAppointment({
       clinicId,
-      patientPhone: resolvedPhone || undefined,
-      patientName: resolvedName || undefined,
+      patientPhone: resolvedPhone,
     });
     return result.message;
   } catch (error) {

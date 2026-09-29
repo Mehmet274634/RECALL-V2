@@ -1,6 +1,7 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
+import { formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 
 export interface LookupAppointmentParams {
   clinicId?: string;
@@ -23,20 +24,20 @@ export interface LookupResult {
 }
 
 /**
- * Look up existing appointments for a patient.
+ * Look up existing appointments for a patient strictly by verified phone number.
  */
 export async function lookupAppointment(params: LookupAppointmentParams): Promise<LookupResult> {
   const clinicId = params.clinicId || (await getDefaultClinic()).id;
 
-  if (!params.patientPhone && !params.patientName) {
+  if (!params.patientPhone) {
     return {
       success: false,
       appointments: [],
-      message: 'Randevu sorgulamak için lütfen telefon numaranızı veya adınızı belirtiniz.',
+      message: 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.',
     };
   }
 
-  if (params.patientPhone && !isValidPhone(params.patientPhone)) {
+  if (!isValidPhone(params.patientPhone)) {
     return {
       success: false,
       appointments: [],
@@ -44,32 +45,20 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
     };
   }
 
-  // Find patient
-  let patient = null;
-  if (params.patientPhone) {
-    const normPhone = normalizePhone(params.patientPhone);
-    patient = await prisma.patient.findFirst({
-      where: {
-        clinicId,
-        phoneNumber: normPhone,
-      },
-    });
-  }
-
-  if (!patient && params.patientName) {
-    patient = await prisma.patient.findFirst({
-      where: {
-        clinicId,
-        fullName: { contains: params.patientName, mode: 'insensitive' },
-      },
-    });
-  }
+  // Find patient strictly by normalized phone number (no name fallback for patient privacy)
+  const normPhone = normalizePhone(params.patientPhone);
+  const patient = await prisma.patient.findFirst({
+    where: {
+      clinicId,
+      phoneNumber: normPhone,
+    },
+  });
 
   if (!patient) {
     return {
       success: false,
       appointments: [],
-      message: 'Belirttiğiniz bilgilerle kayıtlı bir hasta veya randevu bulunamadı.',
+      message: 'Belirttiğiniz telefon numarasıyla kayıtlı bir hasta veya randevu bulunamadı.',
     };
   }
 
@@ -107,12 +96,8 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
   }));
 
   const first = appts[0];
-  const dateFormatted = first.startsAt.toLocaleDateString('tr-TR', {
-    day: 'numeric',
-    month: 'long',
-    weekday: 'long',
-  });
-  const timeFormatted = `${first.startsAt.getHours().toString().padStart(2, '0')}:${first.startsAt.getMinutes().toString().padStart(2, '0')}`;
+  const dateFormatted = formatIstanbulDate(first.startsAt, { weekday: 'long' });
+  const timeFormatted = formatIstanbulTime(first.startsAt);
 
   const message = `Sayın ${patient.fullName}, ${first.doctor.name} ile ${dateFormatted} saat ${timeFormatted}'de randevunuz bulunmaktadır.`;
 

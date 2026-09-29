@@ -5,7 +5,7 @@ import type { Appointment } from '@prisma/client';
 
 export { normalizePhone, isValidPhone } from '../phone.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
-import { parseIstanbulDate } from '../date-utils.js';
+import { parseIstanbulDate, formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 import { checkAvailability } from './availability.js';
 
 export interface BookAppointmentParams {
@@ -182,12 +182,8 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
       });
     });
 
-    const dateFormatted = startsAt.toLocaleDateString('tr-TR', {
-      day: 'numeric',
-      month: 'long',
-      weekday: 'long',
-    });
-    const timeFormatted = `${startsAt.getHours().toString().padStart(2, '0')}:${startsAt.getMinutes().toString().padStart(2, '0')}`;
+    const dateFormatted = formatIstanbulDate(startsAt, { weekday: 'long' });
+    const timeFormatted = formatIstanbulTime(startsAt);
 
     const confirmationMsg = `Sayın ${patient.fullName}, ${doctor.name} ile ${dateFormatted} saat ${timeFormatted} için randevunuz başarıyla oluşturuldu.`;
 

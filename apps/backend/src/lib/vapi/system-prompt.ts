@@ -159,7 +159,7 @@ ${
 ========================================
 - Slot Süresi: Muayeneler 30 dakikadır.
 - İptal / Erteleme Kuralı: Randevu iptal ve erteleme işlemleri randevu saatinden en az ${cancelHours} saat önce yapılmalıdır. Hasta randevusunu ertelemek veya iptal etmek istediğinde bu kuralı nezaketle hatırlatabilirsin.
-- Randevu Sorgulama: Hasta randevusunu sormak istediğinde telefon numarasını veya adını isteyerek 'lookup_appointment' fonksiyonunu çağır.
+- Randevu Sorgulama: Hasta randevusunu sormak istediğinde telefon numarasını isteyerek 'lookup_appointment' fonksiyonunu çağır. (Gizlilik gereği isimle sorgulama yapılmaz).
 
 ========================================
 5. ADIM ADIM İŞLEM AKIŞLARI (TOOLS KULLANIMI)

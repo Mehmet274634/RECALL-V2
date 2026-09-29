@@ -8,8 +8,6 @@ const cancelAppointmentSchema = z.object({
   appointment_id: z.string().optional(),
   patientPhone: z.string().optional(),
   patient_phone: z.string().optional(),
-  patientName: z.string().optional(),
-  patient_name: z.string().optional(),
 });
 
 /**
@@ -18,7 +16,7 @@ const cancelAppointmentSchema = z.object({
 export async function handleCancelAppointment(args: unknown, clinicId?: string): Promise<string> {
   const parsed = cancelAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
-    return 'Randevu iptali için lütfen telefon numaranızı veya randevu bilginizi belirtiniz.';
+    return 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
   }
 
   const {
@@ -26,12 +24,14 @@ export async function handleCancelAppointment(args: unknown, clinicId?: string):
     appointment_id,
     patientPhone,
     patient_phone,
-    patientName,
-    patient_name,
   } = parsed.data;
 
   const phone = (patientPhone || patient_phone || '').trim();
-  if (phone && !isValidPhone(phone)) {
+  if (!phone) {
+    return 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
+  }
+
+  if (!isValidPhone(phone)) {
     return 'İptal işlemi için belirttiğiniz telefon numarası geçersizdir. Lütfen başında sıfır ile cep telefonu numaranızı söyleyiniz.';
   }
 
@@ -39,8 +39,7 @@ export async function handleCancelAppointment(args: unknown, clinicId?: string):
     const result = await cancelAppointment({
       clinicId,
       appointmentId: appointmentId || appointment_id,
-      patientPhone: patientPhone || patient_phone,
-      patientName: patientName || patient_name,
+      patientPhone: phone,
     });
     return result.message;
   } catch (error) {

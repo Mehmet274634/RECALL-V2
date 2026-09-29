@@ -285,6 +285,41 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
 }
 
 /**
+ * Sanitizes a call summary by stripping or redacting sensitive medical data
+ * (symptoms, diagnoses, complaints, treatments, medications) in compliance with KVKK / CONVENTIONS.md §5.
+ */
+export function sanitizeCallSummary(rawSummary: string, category: string): string {
+  if (!rawSummary || !rawSummary.trim()) {
+    return `Kategori: ${category}. Randevu görüşmesi tamamlandı.`;
+  }
+
+  // Regex for Turkish medical terms, complaints, symptoms, diagnoses, medications, treatments
+  const medicalPattern = /\b(?:ağrı|sancı|ateş|öksürük|nefes\s+darlığı|çarpıntı|bulantı|kusma|baş\s+dönmesi|hastalık|teşhis|tanı|tedavi|ilaç|ameliyat|kanser|diyabet|şeker|tansiyon|enfeksiyon|iltihap|kanama|kırık|çıkık|fıtık|romatizma|depresyon|panik\s+atak|psikiyatr\w*|anjiyo|tahlil|rapor|grip|covid|şikayet\w*|semptom\w*|belirti\w*|alerji|lezyon|yaralanma|halsizlik|ishal|kabızlık)\b/i;
+
+  // Split into sentences (handling Turkish punctuation: '.', '!', '?')
+  const sentences = rawSummary
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  const cleanedSentences: string[] = [];
+
+  for (const sentence of sentences) {
+    if (medicalPattern.test(sentence)) {
+      cleanedSentences.push('[Tıbbi şikayet/bilgi KVKK gereği gizlendi]');
+    } else {
+      cleanedSentences.push(sentence);
+    }
+  }
+
+  // Deduplicate consecutive redaction markers
+  let cleanedText = cleanedSentences.join(' ');
+  cleanedText = cleanedText.replace(/(\[Tıbbi şikayet\/bilgi KVKK gereği gizlendi\]\s*)+/g, '[Tıbbi şikayet/bilgi KVKK gereği gizlendi] ');
+
+  return `Kategori: ${category}. ${cleanedText.trim()}`;
+}
+
+/**
  * Handles end-of-call-report.
  * Saves summary, category, transcript, and recording to CallLog linked to resolved clinic.
  */
@@ -312,6 +347,9 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
     const rawSummary =
       (message?.summary as string) ||
       (analysis?.summary as string) ||
+      (artifact?.summary as string) ||
+      (call?.summary as string) ||
+      ((call?.analysis as Record<string, unknown> | undefined)?.summary as string) ||
       'Randevu görüşmesi tamamlandı.';
 
     // Sanitize summary to general operational category (no medical diagnosis) — CONVENTIONS.md §5
@@ -324,8 +362,7 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
     } else if (lowerSummary.includes('değiştir') || lowerSummary.includes('ertele')) {
       category = 'Randevu Değişikliği';
     }
-
-    const summary = `Kategori: ${category}. ${rawSummary.trim()}`;
+    const summary = sanitizeCallSummary(rawSummary, category);
 
     // Extract duration in seconds from Vapi end-of-call-report payload
     let durationSeconds: number | null = null;
