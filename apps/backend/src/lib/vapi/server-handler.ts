@@ -320,6 +320,82 @@ export function sanitizeCallSummary(rawSummary: string, category: string): strin
 }
 
 /**
+ * Determines the call category based on summary and transcript text.
+ * Checks cancellation and rescheduling first so that words like "randevu" don't mask erteleme/iptal.
+ */
+export function determineCallCategory(rawSummary: string, transcript: string | null): string {
+  const lowerSummary = (rawSummary + (transcript || '')).toLowerCase();
+  if (lowerSummary.includes('iptal') || lowerSummary.includes('vazgeç')) {
+    return 'Randevu İptali';
+  }
+  if (lowerSummary.includes('değiştir') || lowerSummary.includes('ertele') || lowerSummary.includes('saat değişikliği')) {
+    return 'Randevu Değişikliği';
+  }
+  if (lowerSummary.includes('randevu') || lowerSummary.includes('oluştur') || lowerSummary.includes('kayıt') || lowerSummary.includes('alındı')) {
+    return 'Randevu Talebi';
+  }
+  return 'Genel Bilgi';
+}
+
+/**
+ * Extracts call_summary from Vapi Structured Outputs (artifact.structuredOutputs),
+ * completely agnostic of the dynamic UUID key.
+ * Logs output keys and names for diagnostics without logging any PII/KVKK payload content.
+ */
+export function extractStructuredCallSummary(
+  artifact?: Record<string, unknown>,
+  call?: Record<string, unknown>,
+  message?: Record<string, unknown>,
+): string | null {
+  const outputs =
+    artifact?.structuredOutputs ||
+    (call?.artifact as Record<string, unknown> | undefined)?.structuredOutputs ||
+    message?.structuredOutputs ||
+    call?.structuredOutputs;
+
+  if (!outputs) return null;
+
+  // Log key names and item names for diagnostics (non-PII, conforming to KVKK)
+  if (typeof outputs === 'object' && !Array.isArray(outputs)) {
+    const diagnosticEntries = Object.entries(outputs as Record<string, unknown>).map(
+      ([key, val]) => ({
+        key,
+        name: (val as Record<string, unknown> | undefined)?.name,
+      }),
+    );
+    console.log('[vapi-diag] artifact.structuredOutputs keys/names:', JSON.stringify(diagnosticEntries));
+
+    for (const item of Object.values(outputs as Record<string, unknown>)) {
+      if (item && typeof item === 'object') {
+        const rec = item as Record<string, unknown>;
+        if (rec.name === 'call_summary' && rec.result != null) {
+          const res = typeof rec.result === 'string' ? rec.result : JSON.stringify(rec.result);
+          if (res.trim()) return res.trim();
+        }
+      }
+    }
+  } else if (Array.isArray(outputs)) {
+    const diagnosticEntries = outputs.map((item, idx) => ({
+      index: idx,
+      name: (item as Record<string, unknown> | undefined)?.name,
+    }));
+    console.log('[vapi-diag] artifact.structuredOutputs (array) names:', JSON.stringify(diagnosticEntries));
+
+    for (const item of outputs) {
+      if (item && typeof item === 'object') {
+        const rec = item as Record<string, unknown>;
+        if (rec.name === 'call_summary' && rec.result != null) {
+          const res = typeof rec.result === 'string' ? rec.result : JSON.stringify(rec.result);
+          if (res.trim()) return res.trim();
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Handles end-of-call-report.
  * Saves summary, category, transcript, and recording to CallLog linked to resolved clinic.
  */
@@ -344,7 +420,9 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
       (artifact?.recordingUrl as string) ||
       null;
 
+    const structuredSummary = extractStructuredCallSummary(artifact, call, message);
     const rawSummary =
+      structuredSummary ||
       (message?.summary as string) ||
       (analysis?.summary as string) ||
       (artifact?.summary as string) ||
@@ -353,15 +431,7 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
       'Randevu görüşmesi tamamlandı.';
 
     // Sanitize summary to general operational category (no medical diagnosis) — CONVENTIONS.md §5
-    let category = 'Genel Bilgi';
-    const lowerSummary = (rawSummary + (transcript || '')).toLowerCase();
-    if (lowerSummary.includes('iptal') || lowerSummary.includes('vazgeç')) {
-      category = 'Randevu İptali';
-    } else if (lowerSummary.includes('randevu') || lowerSummary.includes('oluştur') || lowerSummary.includes('kayıt')) {
-      category = 'Randevu Talebi';
-    } else if (lowerSummary.includes('değiştir') || lowerSummary.includes('ertele')) {
-      category = 'Randevu Değişikliği';
-    }
+    const category = determineCallCategory(rawSummary, transcript);
     const summary = sanitizeCallSummary(rawSummary, category);
 
     // Extract duration in seconds from Vapi end-of-call-report payload
