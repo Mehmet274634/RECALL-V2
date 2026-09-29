@@ -287,10 +287,11 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
 /**
  * Sanitizes a call summary by stripping or redacting sensitive medical data
  * (symptoms, diagnoses, complaints, treatments, medications) in compliance with KVKK / CONVENTIONS.md §5.
+ * Category is stored in its own dedicated column (CallLog.category) and is not prepended to the summary text.
  */
-export function sanitizeCallSummary(rawSummary: string, category: string): string {
+export function sanitizeCallSummary(rawSummary: string, _category?: string): string {
   if (!rawSummary || !rawSummary.trim()) {
-    return `Kategori: ${category}. Randevu görüşmesi tamamlandı.`;
+    return 'Randevu görüşmesi tamamlandı.';
   }
 
   // Regex for Turkish medical terms, complaints, symptoms, diagnoses, medications, treatments
@@ -316,31 +317,134 @@ export function sanitizeCallSummary(rawSummary: string, category: string): strin
   let cleanedText = cleanedSentences.join(' ');
   cleanedText = cleanedText.replace(/(\[Tıbbi şikayet\/bilgi KVKK gereği gizlendi\]\s*)+/g, '[Tıbbi şikayet/bilgi KVKK gereği gizlendi] ');
 
-  return `Kategori: ${category}. ${cleanedText.trim()}`;
+  return cleanedText.trim();
 }
 
 /**
- * Determines the call category based on summary and transcript text.
- * Checks cancellation and rescheduling first so that words like "randevu" don't mask erteleme/iptal.
+ * Extracts only human/user utterances from a multi-line transcript.
+ * Ignores assistant/bot greetings and responses so that assistant phrases
+ * (like "Randevu hattına hoş geldiniz") don't distort category classification.
+ */
+export function extractUserTranscript(transcript: string | null): string {
+  if (!transcript) return '';
+  const lines = transcript.split('\n');
+  const userLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^(user|human|caller|hasta|arayan):\s*/i.test(trimmed)) {
+      userLines.push(trimmed.replace(/^(user|human|caller|hasta|arayan):\s*/i, ''));
+    }
+  }
+
+  return userLines.join(' ');
+}
+
+/**
+ * Determines the call category based primarily on the structured call_summary,
+ * falling back to user-only transcript statements if the summary is absent or ambiguous.
+ *
+ * Broad keywords like "kayıt" and "alındı" are avoided to prevent false positives from
+ * telephony/KVKK audio disclosure phrases.
  */
 export function determineCallCategory(rawSummary: string, transcript: string | null): string {
-  const lowerSummary = (rawSummary + (transcript || '')).toLowerCase();
-  if (lowerSummary.includes('iptal') || lowerSummary.includes('vazgeç')) {
+  const summaryLower = (rawSummary || '').trim().toLowerCase();
+
+  // 1. Check structured call_summary first
+  if (summaryLower) {
+    // Cancellation
+    if (summaryLower.includes('iptal') || summaryLower.includes('vazgeç')) {
+      return 'Randevu İptali';
+    }
+    // Rescheduling
+    if (
+      summaryLower.includes('değiştir') ||
+      summaryLower.includes('ertele') ||
+      summaryLower.includes('saat değişikliği') ||
+      summaryLower.includes('yeniden planla')
+    ) {
+      return 'Randevu Değişikliği';
+    }
+    // General Information: explicitly check for inquiry phrases
+    if (
+      summaryLower.includes('bilgi soruldu') ||
+      summaryLower.includes('bilgi istendi') ||
+      summaryLower.includes('bilgi verildi') ||
+      summaryLower.includes('bilgi alındı') ||
+      summaryLower.includes('soru soruldu') ||
+      summaryLower.includes('çalışma saat') ||
+      summaryLower.includes('mesai') ||
+      summaryLower.includes('hizmet') ||
+      summaryLower.includes('branş') ||
+      summaryLower.includes('fiyat') ||
+      summaryLower.includes('adres')
+    ) {
+      return 'Genel Bilgi';
+    }
+    // Appointment creation: specific targeted phrases only (avoid generic "kayıt" / "alındı")
+    if (
+      summaryLower.includes('randevu oluştur') ||
+      summaryLower.includes('randevu alındı') ||
+      summaryLower.includes('randevu verildi') ||
+      summaryLower.includes('yeni randevu') ||
+      summaryLower.includes('randevu kaydı oluşturuldu')
+    ) {
+      return 'Randevu Talebi';
+    }
+  }
+
+  // 2. Fallback: inspect ONLY User statements in transcript (ignore AI greeting)
+  const userText = extractUserTranscript(transcript).toLowerCase();
+
+  if (userText.includes('iptal') || userText.includes('vazgeç')) {
     return 'Randevu İptali';
   }
-  if (lowerSummary.includes('değiştir') || lowerSummary.includes('ertele') || lowerSummary.includes('saat değişikliği')) {
+  if (
+    userText.includes('değiştir') ||
+    userText.includes('ertele') ||
+    userText.includes('saat değişikliği') ||
+    userText.includes('farklı bir gün') ||
+    userText.includes('farklı bir saat')
+  ) {
     return 'Randevu Değişikliği';
   }
-  if (lowerSummary.includes('randevu') || lowerSummary.includes('oluştur') || lowerSummary.includes('kayıt') || lowerSummary.includes('alındı')) {
+  if (
+    userText.includes('randevu al') ||
+    userText.includes('randevu oluştur') ||
+    userText.includes('randevu istiyorum') ||
+    userText.includes('müsait yer') ||
+    userText.includes('müsaitlik') ||
+    userText.includes('uygun saat')
+  ) {
     return 'Randevu Talebi';
   }
+  if (
+    userText.includes('saat') ||
+    userText.includes('nerede') ||
+    userText.includes('doktor') ||
+    userText.includes('branş') ||
+    userText.includes('bilgi') ||
+    userText.includes('nasıl gelinir') ||
+    userText.includes('hizmet') ||
+    userText.includes('ücret')
+  ) {
+    return 'Genel Bilgi';
+  }
+
+  if (summaryLower.includes('bilgi') || summaryLower.includes('danışma')) {
+    return 'Genel Bilgi';
+  }
+
+  if (summaryLower.includes('randevu')) {
+    return 'Randevu Talebi';
+  }
+
   return 'Genel Bilgi';
 }
 
 /**
  * Extracts call_summary from Vapi Structured Outputs (artifact.structuredOutputs),
- * completely agnostic of the dynamic UUID key.
- * Logs output keys and names for diagnostics without logging any PII/KVKK payload content.
+ * completely agnostic of the dynamic UUID key, mapping directly to name === 'call_summary'.
  */
 export function extractStructuredCallSummary(
   artifact?: Record<string, unknown>,
@@ -355,16 +459,7 @@ export function extractStructuredCallSummary(
 
   if (!outputs) return null;
 
-  // Log key names and item names for diagnostics (non-PII, conforming to KVKK)
   if (typeof outputs === 'object' && !Array.isArray(outputs)) {
-    const diagnosticEntries = Object.entries(outputs as Record<string, unknown>).map(
-      ([key, val]) => ({
-        key,
-        name: (val as Record<string, unknown> | undefined)?.name,
-      }),
-    );
-    console.log('[vapi-diag] artifact.structuredOutputs keys/names:', JSON.stringify(diagnosticEntries));
-
     for (const item of Object.values(outputs as Record<string, unknown>)) {
       if (item && typeof item === 'object') {
         const rec = item as Record<string, unknown>;
@@ -375,12 +470,6 @@ export function extractStructuredCallSummary(
       }
     }
   } else if (Array.isArray(outputs)) {
-    const diagnosticEntries = outputs.map((item, idx) => ({
-      index: idx,
-      name: (item as Record<string, unknown> | undefined)?.name,
-    }));
-    console.log('[vapi-diag] artifact.structuredOutputs (array) names:', JSON.stringify(diagnosticEntries));
-
     for (const item of outputs) {
       if (item && typeof item === 'object') {
         const rec = item as Record<string, unknown>;

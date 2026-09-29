@@ -136,6 +136,7 @@ export interface CallLog {
   transcript: string | null;
   recordingUrl: string | null;
   summary: string | null;
+  category?: string | null;
   endedReason: string | null;
   createdAt: string;
   appointments?: Array<{

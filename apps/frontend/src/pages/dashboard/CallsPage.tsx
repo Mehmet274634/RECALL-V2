@@ -44,18 +44,19 @@ export default function CallsPage() {
     loadData();
   };
 
-  const getCategoryBadge = (summary: string | null) => {
-    if (!summary) {
-      return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Genel Bilgi</span>;
-    }
-    if (summary.includes('Randevu Talebi')) {
+  const getCategoryBadge = (category: string | null | undefined, summary: string | null) => {
+    const cat = category || summary || '';
+    if (cat.includes('Randevu Talebi')) {
       return <span className="badge-active px-2.5 py-0.5 rounded-full text-xs font-semibold">Randevu Talebi</span>;
     }
-    if (summary.includes('İptal')) {
+    if (cat.includes('İptal')) {
       return <span className="badge-escalated px-2.5 py-0.5 rounded-full text-xs font-semibold">Randevu İptali</span>;
     }
-    if (summary.includes('Değişikliği')) {
+    if (cat.includes('Değişikliği') || cat.includes('Değişiklik')) {
       return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Değişiklik</span>;
+    }
+    if (cat.includes('Genel Bilgi') || cat.includes('Bilgi')) {
+      return <span className="badge-pending px-2.5 py-0.5 rounded-full text-xs font-semibold">Genel Bilgi</span>;
     }
     return <span className="bg-surface text-muted-foreground px-2.5 py-0.5 rounded-full text-xs font-semibold">Arama</span>;
   };
@@ -136,7 +137,7 @@ export default function CallsPage() {
                         <Clock className="w-3.5 h-3.5" />
                         <span>{dateStr} • {timeStr}</span>
                       </div>
-                      {getCategoryBadge(call.summary)}
+                      {getCategoryBadge(call.category, call.summary)}
                       <span className="text-xs text-muted-foreground bg-surface px-2 py-0.5 rounded-md font-mono">
                         {call.endedReason || 'completed'}
                       </span>
