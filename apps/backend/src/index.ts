@@ -49,12 +49,27 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
+  console.warn(
+    '[CORS] ALLOWED_ORIGINS ortam değişkeni boş veya tanımlanmamış. Production ortamında tarayıcı kaynaklı tüm CORS istekleri engellenecektir.',
+  );
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g., server-to-server, curl, mobile)
+      // Allow requests with no origin (e.g., server-to-server, curl, mobile, Vapi webhooks)
       if (!origin) return callback(null, true);
-      // Allow localhost or vercel preview/prod domains
+
+      // In production, strictly allow only explicitly configured origins
+      if (process.env.NODE_ENV === 'production') {
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`Origin ${origin} not allowed by CORS`));
+      }
+
+      // Development / non-production fallback (allow localhost or vercel preview/prod domains)
       if (
         allowedOrigins.includes(origin) ||
         origin.includes('localhost') ||
