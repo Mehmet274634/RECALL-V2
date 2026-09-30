@@ -8,6 +8,7 @@ const checkAvailabilitySchema = z.object({
   specialty: z.string().optional(),
   branch: z.string().optional(),
   date: z.string().optional(),
+  time: z.string().optional(),
 });
 
 /**
@@ -19,7 +20,7 @@ export async function handleCheckAvailability(args: unknown, clinicId?: string):
     return 'Lütfen randevu almak istediğiniz tarihi veya doktor branşını belirtiniz.';
   }
 
-  const { doctorName, doctor_name, specialty, branch, date } = parsed.data;
+  const { doctorName, doctor_name, specialty, branch, date, time } = parsed.data;
 
   try {
     const result = await checkAvailability({
@@ -27,6 +28,7 @@ export async function handleCheckAvailability(args: unknown, clinicId?: string):
       doctorName: doctorName || doctor_name,
       specialty: specialty || branch,
       date,
+      time,
     });
     return result.message;
   } catch (error) {

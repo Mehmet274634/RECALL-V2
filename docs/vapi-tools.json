@@ -11,6 +11,10 @@
             "type": "string",
             "description": "Randevu sorgulanmak istenen takvim tarihi (YYYY-MM-DD formatında, örn: 2026-10-05)"
           },
+          "time": {
+            "type": "string",
+            "description": "Sorgulanmak istenen randevu saati (HH:mm formatında, 24 saat esasına göre, örn: 09:30 - opsiyonel)"
+          },
           "doctorName": {
             "type": "string",
             "description": "Randevu alınmak istenen doktorun adı (opsiyonel)"
