@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
+import { prisma } from '../../db/client.js';
+import { getDefaultClinic } from '../../db/clinic.js';
 import { bookAppointment } from '../../scheduling/booking.js';
-import { resolveToolPhone } from '../../phone.js';
+import { normalizeTimeInput } from '../../scheduling/availability.js';
+import { normalizePhone, resolveToolPhone } from '../../phone.js';
+import { parseIstanbulDate, formatIstanbulTime } from '../../date-utils.js';
 
 const bookAppointmentSchema = z.object({
   patientName: z.string().optional(),
@@ -68,8 +72,88 @@ export async function handleBookAppointment(
   }
 
   try {
+    const resolvedClinicId = clinicId || (await getDefaultClinic()).id;
+    const normPhone = normalizePhone(phoneResolution.phone);
+
+    // Resolve doctor for repeat call check
+    let doctor = null;
+    const docName = (doctorName || doctor_name || '').trim();
+    const spec = (specialty || '').trim();
+
+    if (docName) {
+      doctor = await prisma.doctor.findFirst({
+        where: {
+          clinicId: resolvedClinicId,
+          name: { contains: docName, mode: 'insensitive' },
+        },
+      });
+    }
+
+    if (!doctor && spec) {
+      doctor = await prisma.doctor.findFirst({
+        where: {
+          clinicId: resolvedClinicId,
+          specialty: { contains: spec, mode: 'insensitive' },
+        },
+      });
+    }
+
+    if (!doctor) {
+      doctor = await prisma.doctor.findFirst({
+        where: { clinicId: resolvedClinicId },
+      });
+    }
+
+    if (doctor) {
+      const normTime = normalizeTimeInput(resolvedTime) || resolvedTime;
+      const timeFormatted = normTime.length === 5 ? `${normTime}:00` : normTime;
+      let startsAt: Date | null = null;
+      try {
+        if (resolvedDate.includes('T')) {
+          startsAt = parseIstanbulDate(resolvedDate);
+        } else {
+          startsAt = parseIstanbulDate(`${resolvedDate}T${timeFormatted}`);
+        }
+      } catch {
+        startsAt = null;
+      }
+
+      if (startsAt && !isNaN(startsAt.getTime())) {
+        const duration = 30;
+        const endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
+
+        // Check if an active appointment already exists for this doctor and time slot
+        const existing = await prisma.appointment.findFirst({
+          where: {
+            clinicId: resolvedClinicId,
+            doctorId: doctor.id,
+            status: { not: 'CANCELLED' },
+            AND: [
+              { startsAt: { lt: endsAt } },
+              { endsAt: { gt: startsAt } },
+            ],
+          },
+          include: {
+            patient: true,
+          },
+        });
+
+        // If the slot is already booked for this exact same patient phone: idempotency protection
+        if (
+          existing &&
+          existing.patient &&
+          normalizePhone(existing.patient.phoneNumber) === normPhone
+        ) {
+          const dateStr = startsAt.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+          const timeStr = formatIstanbulTime(startsAt);
+          const patientDisplayName = existing.patient.fullName || resolvedName;
+          return `Randevu zaten oluşturulmuş: ${patientDisplayName}, ${dateStr} ${timeStr}.`;
+        }
+      }
+    }
+
     const result = await bookAppointment({
-      clinicId,
+      clinicId: resolvedClinicId,
       patientName: resolvedName,
       patientPhone: phoneResolution.phone,
       doctorName: doctorName || doctor_name,
