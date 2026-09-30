@@ -1,6 +1,6 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { normalizePhone, isValidPhone } from '../phone.js';
+import { normalizePhone, isValidPhone, isTurkishNameMatch } from '../phone.js';
 import { formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 
 export interface LookupAppointmentParams {
@@ -24,10 +24,18 @@ export interface LookupResult {
 }
 
 /**
- * Look up existing appointments for a patient strictly by verified phone number.
+ * Look up existing appointments for a patient strictly by verified phone number and matching patientName.
  */
 export async function lookupAppointment(params: LookupAppointmentParams): Promise<LookupResult> {
   const clinicId = params.clinicId || (await getDefaultClinic()).id;
+
+  if (!params.patientName || !params.patientName.trim()) {
+    return {
+      success: false,
+      appointments: [],
+      message: 'Randevunuzu sorgulayabilmek için lütfen adınızı ve soyadınızı belirtiniz.',
+    };
+  }
 
   if (!params.patientPhone) {
     return {
@@ -45,7 +53,7 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
     };
   }
 
-  // Find patient strictly by normalized phone number (no name fallback for patient privacy)
+  // Find patient strictly by normalized phone number and verify name match
   const normPhone = normalizePhone(params.patientPhone);
   const patient = await prisma.patient.findFirst({
     where: {
@@ -54,11 +62,11 @@ export async function lookupAppointment(params: LookupAppointmentParams): Promis
     },
   });
 
-  if (!patient) {
+  if (!patient || !isTurkishNameMatch(patient.fullName, params.patientName)) {
     return {
       success: false,
       appointments: [],
-      message: 'Belirttiğiniz telefon numarasıyla kayıtlı bir hasta veya randevu bulunamadı.',
+      message: 'Bu bilgilerle kayıtlı randevu bulunamadı.',
     };
   }
 

@@ -132,3 +132,79 @@ export function validateAndFormatTurkishPhone(rawPhone?: string | null): {
   };
 }
 
+/**
+ * Resolves and validates phone number for tool calls according to strict rules:
+ * 1. If explicitPhone is provided: validate and format (11-digit 05...).
+ * 2. If explicitPhone is empty and useCallerNumber !== true: do NOT fall back to caller ID. Return:
+ *    "Telefon numarası alınmadı. Hastadan numara ya da \"bu numaradan ulaşın\" onayı iste."
+ * 3. If useCallerNumber === true and defaultCustomerNumber is missing/empty (web test):
+ *    "Arayan numara tespit edilemedi. Lütfen hastadan telefon numarasını isteyiniz."
+ * 4. If useCallerNumber === true and defaultCustomerNumber exists: validate & format caller ID.
+ */
+export function resolveToolPhone(params: {
+  explicitPhone?: string | null;
+  useCallerNumber?: boolean | null;
+  defaultCustomerNumber?: string | null;
+}): {
+  phone?: string;
+  errorMessage?: string;
+} {
+  const explicit = (params.explicitPhone || '').trim();
+
+  // 1. patientPhone doluysa onu kullan (11 hane / 05 doğrulaması aynen)
+  if (explicit) {
+    const val = validateAndFormatTurkishPhone(explicit);
+    if (!val.isValid || !val.formattedPhone) {
+      return { errorMessage: 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.' };
+    }
+    return { phone: val.formattedPhone };
+  }
+
+  // 2. patientPhone boşsa ve useCallerNumber !== true ise arayan numaraya DÜŞME; işlemi yapma
+  if (params.useCallerNumber !== true) {
+    return {
+      errorMessage: 'Telefon numarası alınmadı. Hastadan numara ya da "bu numaradan ulaşın" onayı iste.',
+    };
+  }
+
+  // 3. useCallerNumber true ve call.customer.number yoksa (web testi) işlemi yapma, numara iste
+  const caller = (params.defaultCustomerNumber || '').trim();
+  if (!caller) {
+    return {
+      errorMessage: 'Arayan numara tespit edilemedi. Lütfen hastadan telefon numarasını isteyiniz.',
+    };
+  }
+
+  const callerVal = validateAndFormatTurkishPhone(caller);
+  if (!callerVal.isValid || !callerVal.formattedPhone) {
+    return { errorMessage: 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.' };
+  }
+
+  return { phone: callerVal.formattedPhone };
+}
+
+/**
+ * Normalizes a Turkish full name for case and diacritic-insensitive comparison.
+ * e.g. "ayşe yılmaz" === "Ayşe Yılmaz" === "AYSE YILMAZ".
+ */
+export function normalizeTurkishName(name?: string | null): string {
+  if (!name || typeof name !== 'string') return '';
+  return name
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/\s+/g, ' ');
+}
+
+export function isTurkishNameMatch(nameA?: string | null, nameB?: string | null): boolean {
+  const normA = normalizeTurkishName(nameA);
+  const normB = normalizeTurkishName(nameB);
+  if (!normA || !normB) return false;
+  return normA === normB;
+}
+

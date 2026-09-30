@@ -1,11 +1,15 @@
 import { z } from 'zod';
 
 import { lookupAppointment } from '../../scheduling/lookup.js';
-import { validateAndFormatTurkishPhone } from '../../phone.js';
+import { resolveToolPhone } from '../../phone.js';
 
 const lookupAppointmentSchema = z.object({
+  patientName: z.string().optional(),
+  patient_name: z.string().optional(),
   patientPhone: z.string().optional(),
   patient_phone: z.string().optional(),
+  useCallerNumber: z.boolean().optional(),
+  use_caller_number: z.boolean().optional(),
 });
 
 /**
@@ -18,26 +22,38 @@ export async function handleLookupAppointment(
 ): Promise<string> {
   const parsed = lookupAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
-    return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
+    return 'Randevunuzu sorgulayabilmek için lütfen adınızı, soyadınızı ve telefon numaranızı belirtiniz.';
   }
 
-  const { patientPhone, patient_phone } = parsed.data;
-  const explicitPhone = (patientPhone || patient_phone || '').trim();
-  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
+  const {
+    patientName,
+    patient_name,
+    patientPhone,
+    patient_phone,
+    useCallerNumber,
+    use_caller_number,
+  } = parsed.data;
 
-  if (!candidatePhone) {
-    return 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
+  const resolvedName = (patientName || patient_name || '').trim();
+  if (!resolvedName) {
+    return 'Randevunuzu sorgulayabilmek için lütfen adınızı ve soyadınızı belirtiniz.';
   }
 
-  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
-  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
-    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
+  const phoneResolution = resolveToolPhone({
+    explicitPhone: patientPhone || patient_phone,
+    useCallerNumber: useCallerNumber ?? use_caller_number,
+    defaultCustomerNumber,
+  });
+
+  if (phoneResolution.errorMessage || !phoneResolution.phone) {
+    return phoneResolution.errorMessage || 'Randevunuzu sorgulayabilmek için lütfen telefon numaranızı belirtiniz.';
   }
 
   try {
     const result = await lookupAppointment({
       clinicId,
-      patientPhone: phoneValidation.formattedPhone,
+      patientName: resolvedName,
+      patientPhone: phoneResolution.phone,
     });
     return result.message;
   } catch (error) {
@@ -45,3 +61,4 @@ export async function handleLookupAppointment(
     return 'Randevu bilgileri sorgulanırken bir hata oluştu.';
   }
 }
+

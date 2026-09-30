@@ -1,13 +1,17 @@
 import { z } from 'zod';
 
 import { rescheduleAppointment } from '../../scheduling/cancellation.js';
-import { validateAndFormatTurkishPhone } from '../../phone.js';
+import { resolveToolPhone } from '../../phone.js';
 
 const rescheduleAppointmentSchema = z.object({
   appointmentId: z.string().optional(),
   appointment_id: z.string().optional(),
+  patientName: z.string().optional(),
+  patient_name: z.string().optional(),
   patientPhone: z.string().optional(),
   patient_phone: z.string().optional(),
+  useCallerNumber: z.boolean().optional(),
+  use_caller_number: z.boolean().optional(),
   newDate: z.string().optional(),
   new_date: z.string().optional(),
   date: z.string().optional(),
@@ -26,14 +30,18 @@ export async function handleRescheduleAppointment(
 ): Promise<string> {
   const parsed = rescheduleAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
-    return 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı ve yeni tarih/saati belirtiniz.';
+    return 'Randevu saatinizi değiştirmek için lütfen adınızı, telefon numaranızı ve yeni tarih/saati belirtiniz.';
   }
 
   const {
     appointmentId,
     appointment_id,
+    patientName,
+    patient_name,
     patientPhone,
     patient_phone,
+    useCallerNumber,
+    use_caller_number,
     newDate,
     new_date,
     date,
@@ -42,15 +50,19 @@ export async function handleRescheduleAppointment(
     time,
   } = parsed.data;
 
-  const explicitPhone = (patientPhone || patient_phone || '').trim();
-  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
-  if (!candidatePhone) {
-    return 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı belirtiniz.';
+  const resolvedName = (patientName || patient_name || '').trim();
+  if (!resolvedName) {
+    return 'Randevu saatinizi değiştirmek için lütfen adınızı ve soyadınızı belirtiniz.';
   }
 
-  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
-  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
-    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
+  const phoneResolution = resolveToolPhone({
+    explicitPhone: patientPhone || patient_phone,
+    useCallerNumber: useCallerNumber ?? use_caller_number,
+    defaultCustomerNumber,
+  });
+
+  if (phoneResolution.errorMessage || !phoneResolution.phone) {
+    return phoneResolution.errorMessage || 'Randevu saatinizi değiştirmek için lütfen telefon numaranızı belirtiniz.';
   }
 
   const targetDate = newDate || new_date || date;
@@ -64,7 +76,8 @@ export async function handleRescheduleAppointment(
     const result = await rescheduleAppointment({
       clinicId,
       appointmentId: appointmentId || appointment_id,
-      patientPhone: phoneValidation.formattedPhone,
+      patientName: resolvedName,
+      patientPhone: phoneResolution.phone,
       newDate: targetDate,
       newTime: targetTime,
     });
@@ -74,3 +87,4 @@ export async function handleRescheduleAppointment(
     return 'Randevu saati güncellenirken bir hata oluştu.';
   }
 }
+

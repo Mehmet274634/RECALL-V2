@@ -47,6 +47,10 @@
             "type": "string",
             "description": "Hastanın geçerli cep telefonu numarası (örn: 05321234567)"
           },
+          "useCallerNumber": {
+            "type": "boolean",
+            "description": "Hasta 'bu numaradan ulaşın / bu numaradan bakın' diye AÇIKÇA onayladıysa true. Farklı numara verdiyse gönderme."
+          },
           "date": {
             "type": "string",
             "description": "Randevu tarihi (YYYY-MM-DD formatında, örn: 2026-10-05)"
@@ -64,7 +68,7 @@
             "description": "Doktor uzmanlık alanı (opsiyonel)"
           }
         },
-        "required": ["patientName", "patientPhone", "date", "time"]
+        "required": ["patientName", "date", "time"]
       }
     },
     "server": {
@@ -79,16 +83,24 @@
     "type": "function",
     "function": {
       "name": "lookup_appointment",
-      "description": "Hastanın doğrulanmış cep telefonu numarasını kullanarak sistemdeki aktif randevu kaydını sorgular.",
+      "description": "Hastanın ad soyad ve doğrulanmış cep telefonu numarasını kullanarak sistemdeki aktif randevu kaydını sorgular.",
       "parameters": {
         "type": "object",
         "properties": {
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı"
+          },
           "patientPhone": {
             "type": "string",
             "description": "Randevusu sorgulanacak hastanın cep telefonu numarası (örn: 05321234567)"
+          },
+          "useCallerNumber": {
+            "type": "boolean",
+            "description": "Hasta 'bu numaradan ulaşın / bu numaradan bakın' diye AÇIKÇA onayladıysa true. Farklı numara verdiyse gönderme."
           }
         },
-        "required": ["patientPhone"]
+        "required": ["patientName"]
       }
     },
     "server": {
@@ -103,20 +115,28 @@
     "type": "function",
     "function": {
       "name": "cancel_appointment",
-      "description": "Hastanın doğrulanmış cep telefonu numarası ile mevcut randevusunu iptal eder.",
+      "description": "Hastanın ad soyad ve doğrulanmış cep telefonu numarası ile mevcut randevusunu iptal eder.",
       "parameters": {
         "type": "object",
         "properties": {
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı"
+          },
           "patientPhone": {
             "type": "string",
             "description": "Randevusu iptal edilecek hastanın cep telefonu numarası"
+          },
+          "useCallerNumber": {
+            "type": "boolean",
+            "description": "Hasta 'bu numaradan ulaşın / bu numaradan bakın' diye AÇIKÇA onayladıysa true. Farklı numara verdiyse gönderme."
           },
           "appointmentId": {
             "type": "string",
             "description": "İptal edilecek spesifik randevu ID'si (varsa opsiyonel)"
           }
         },
-        "required": ["patientPhone"]
+        "required": ["patientName"]
       }
     },
     "server": {
@@ -131,13 +151,21 @@
     "type": "function",
     "function": {
       "name": "reschedule_appointment",
-      "description": "Hastanın doğrulanmış cep telefonu numarası ile mevcut randevusunu yeni bir tarih ve saate taşır (yeniden planlar / erteler).",
+      "description": "Hastanın ad soyad ve doğrulanmış cep telefonu numarası ile mevcut randevusunu yeni bir tarih ve saate taşır (yeniden planlar / erteler).",
       "parameters": {
         "type": "object",
         "properties": {
+          "patientName": {
+            "type": "string",
+            "description": "Hastanın adı ve soyadı"
+          },
           "patientPhone": {
             "type": "string",
             "description": "Randevusu ertelenecek hastanın cep telefonu numarası"
+          },
+          "useCallerNumber": {
+            "type": "boolean",
+            "description": "Hasta 'bu numaradan ulaşın / bu numaradan bakın' diye AÇIKÇA onayladıysa true. Farklı numara verdiyse gönderme."
           },
           "newDate": {
             "type": "string",
@@ -152,7 +180,7 @@
             "description": "Taşınacak randevu ID'si (opsiyonel)"
           }
         },
-        "required": ["patientPhone", "newDate", "newTime"]
+        "required": ["patientName", "newDate", "newTime"]
       }
     },
     "server": {

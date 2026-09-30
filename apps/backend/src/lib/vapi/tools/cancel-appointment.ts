@@ -1,13 +1,17 @@
 import { z } from 'zod';
 
 import { cancelAppointment } from '../../scheduling/cancellation.js';
-import { validateAndFormatTurkishPhone } from '../../phone.js';
+import { resolveToolPhone } from '../../phone.js';
 
 const cancelAppointmentSchema = z.object({
   appointmentId: z.string().optional(),
   appointment_id: z.string().optional(),
+  patientName: z.string().optional(),
+  patient_name: z.string().optional(),
   patientPhone: z.string().optional(),
   patient_phone: z.string().optional(),
+  useCallerNumber: z.boolean().optional(),
+  use_caller_number: z.boolean().optional(),
 });
 
 /**
@@ -20,32 +24,41 @@ export async function handleCancelAppointment(
 ): Promise<string> {
   const parsed = cancelAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
-    return 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
+    return 'Randevu iptali için lütfen adınızı, soyadınızı ve telefon numaranızı belirtiniz.';
   }
 
   const {
     appointmentId,
     appointment_id,
+    patientName,
+    patient_name,
     patientPhone,
     patient_phone,
+    useCallerNumber,
+    use_caller_number,
   } = parsed.data;
 
-  const explicitPhone = (patientPhone || patient_phone || '').trim();
-  const candidatePhone = explicitPhone || (defaultCustomerNumber || '').trim();
-  if (!candidatePhone) {
-    return 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
+  const resolvedName = (patientName || patient_name || '').trim();
+  if (!resolvedName) {
+    return 'Randevu iptali için lütfen adınızı ve soyadınızı belirtiniz.';
   }
 
-  const phoneValidation = validateAndFormatTurkishPhone(candidatePhone);
-  if (!phoneValidation.isValid || !phoneValidation.formattedPhone) {
-    return 'Telefon numarası geçersiz, hastadan numarayı yeniden iste.';
+  const phoneResolution = resolveToolPhone({
+    explicitPhone: patientPhone || patient_phone,
+    useCallerNumber: useCallerNumber ?? use_caller_number,
+    defaultCustomerNumber,
+  });
+
+  if (phoneResolution.errorMessage || !phoneResolution.phone) {
+    return phoneResolution.errorMessage || 'Randevu iptali için lütfen telefon numaranızı belirtiniz.';
   }
 
   try {
     const result = await cancelAppointment({
       clinicId,
       appointmentId: appointmentId || appointment_id,
-      patientPhone: phoneValidation.formattedPhone,
+      patientName: resolvedName,
+      patientPhone: phoneResolution.phone,
     });
     return result.message;
   } catch (error) {
@@ -53,3 +66,4 @@ export async function handleCancelAppointment(
     return 'Randevu iptal edilirken bir hata oluştu.';
   }
 }
+

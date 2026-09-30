@@ -1,6 +1,6 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { normalizePhone, isValidPhone } from '../phone.js';
+import { normalizePhone, isValidPhone, isTurkishNameMatch } from '../phone.js';
 import { parseIstanbulDate, formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 
 export interface CancelAppointmentParams {
@@ -26,10 +26,22 @@ export interface ModificationResult {
 }
 
 /**
- * Cancels an existing scheduled appointment strictly by appointmentId or verified patient phone.
+ * Cancels an existing scheduled appointment strictly by appointmentId or verified patient phone + patientName.
+ * Checks clinic cancellationPolicyHours: rejects if startsAt - now < policyHours.
  */
 export async function cancelAppointment(params: CancelAppointmentParams): Promise<ModificationResult> {
-  const clinicId = params.clinicId || (await getDefaultClinic()).id;
+  const clinic = params.clinicId
+    ? await prisma.clinic.findUnique({ where: { id: params.clinicId } })
+    : await getDefaultClinic();
+  const resolvedClinicId = clinic?.id || (await getDefaultClinic()).id;
+  const policyHours = clinic?.cancellationPolicyHours ?? 2;
+
+  if (!params.patientName || !params.patientName.trim()) {
+    return {
+      success: false,
+      message: 'Randevunuzu iptal edebilmek için lütfen adınızı ve soyadınızı belirtiniz.',
+    };
+  }
 
   if (!params.patientPhone) {
     return {
@@ -52,26 +64,26 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
     appointment = await prisma.appointment.findFirst({
       where: {
         id: params.appointmentId,
-        clinicId,
+        clinicId: resolvedClinicId,
         status: 'SCHEDULED',
         patient: { phoneNumber: normPhone },
       },
       include: { doctor: true, patient: true },
     });
 
-    if (!appointment) {
+    if (!appointment || !isTurkishNameMatch(appointment.patient.fullName, params.patientName)) {
       return {
         success: false,
-        message: 'Belirttiğiniz telefon numarası ile randevu kaydı eşleşmedi.',
+        message: 'Bu bilgilerle kayıtlı randevu bulunamadı.',
       };
     }
   } else {
     const patient = await prisma.patient.findFirst({
-      where: { clinicId, phoneNumber: normPhone },
+      where: { clinicId: resolvedClinicId, phoneNumber: normPhone },
     });
-    if (patient) {
+    if (patient && isTurkishNameMatch(patient.fullName, params.patientName)) {
       appointment = await prisma.appointment.findFirst({
-        where: { clinicId, patientId: patient.id, status: 'SCHEDULED' },
+        where: { clinicId: resolvedClinicId, patientId: patient.id, status: 'SCHEDULED' },
         include: { doctor: true, patient: true },
         orderBy: { startsAt: 'asc' },
       });
@@ -81,7 +93,17 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
   if (!appointment) {
     return {
       success: false,
-      message: 'Belirttiğiniz telefon numarasına ait iptal edilecek aktif bir randevu bulunamadı.',
+      message: 'Bu bilgilerle kayıtlı randevu bulunamadı.',
+    };
+  }
+
+  // Check cancellation policy hours (tam N saat kala kabul, altı ret, geçmiş randevu ret)
+  const diffMs = appointment.startsAt.getTime() - Date.now();
+  const policyMs = policyHours * 60 * 60 * 1000;
+  if (diffMs < policyMs) {
+    return {
+      success: false,
+      message: `Randevuya ${policyHours} saatten az kaldığı için online iptal/değişiklik yapılamıyor. Sizi yetkili sekreterimize aktarabilirim.`,
     };
   }
 
@@ -101,9 +123,21 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
 
 /**
  * Reschedules an existing scheduled appointment to a new date and time.
+ * Enforces cancellationPolicyHours on the OLD appointment.
  */
 export async function rescheduleAppointment(params: RescheduleAppointmentParams): Promise<ModificationResult> {
-  const clinicId = params.clinicId || (await getDefaultClinic()).id;
+  const clinic = params.clinicId
+    ? await prisma.clinic.findUnique({ where: { id: params.clinicId } })
+    : await getDefaultClinic();
+  const resolvedClinicId = clinic?.id || (await getDefaultClinic()).id;
+  const policyHours = clinic?.cancellationPolicyHours ?? 2;
+
+  if (!params.patientName || !params.patientName.trim()) {
+    return {
+      success: false,
+      message: 'Randevu saatinizi değiştirmek için lütfen adınızı ve soyadınızı belirtiniz.',
+    };
+  }
 
   if (!params.patientPhone) {
     return {
@@ -126,26 +160,26 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
     appointment = await prisma.appointment.findFirst({
       where: {
         id: params.appointmentId,
-        clinicId,
+        clinicId: resolvedClinicId,
         status: 'SCHEDULED',
         patient: { phoneNumber: normPhone },
       },
       include: { doctor: true, patient: true },
     });
 
-    if (!appointment) {
+    if (!appointment || !isTurkishNameMatch(appointment.patient.fullName, params.patientName)) {
       return {
         success: false,
-        message: 'Belirttiğiniz telefon numarası ile randevu kaydı eşleşmedi.',
+        message: 'Bu bilgilerle kayıtlı randevu bulunamadı.',
       };
     }
   } else {
     const patient = await prisma.patient.findFirst({
-      where: { clinicId, phoneNumber: normPhone },
+      where: { clinicId: resolvedClinicId, phoneNumber: normPhone },
     });
-    if (patient) {
+    if (patient && isTurkishNameMatch(patient.fullName, params.patientName)) {
       appointment = await prisma.appointment.findFirst({
-        where: { clinicId, patientId: patient.id, status: 'SCHEDULED' },
+        where: { clinicId: resolvedClinicId, patientId: patient.id, status: 'SCHEDULED' },
         include: { doctor: true, patient: true },
         orderBy: { startsAt: 'asc' },
       });
@@ -155,7 +189,17 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
   if (!appointment) {
     return {
       success: false,
-      message: 'Belirttiğiniz telefon numarasına ait değiştirilecek aktif bir randevu bulunamadı.',
+      message: 'Bu bilgilerle kayıtlı randevu bulunamadı.',
+    };
+  }
+
+  // Check cancellation policy hours on the OLD appointment startsAt
+  const diffMs = appointment.startsAt.getTime() - Date.now();
+  const policyMs = policyHours * 60 * 60 * 1000;
+  if (diffMs < policyMs) {
+    return {
+      success: false,
+      message: `Randevuya ${policyHours} saatten az kaldığı için online iptal/değişiklik yapılamıyor. Sizi yetkili sekreterimize aktarabilirim.`,
     };
   }
 
@@ -197,7 +241,7 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
 
       const conflict = await tx.appointment.findFirst({
         where: {
-          clinicId,
+          clinicId: resolvedClinicId,
           doctorId: targetDoctorId,
           status: 'SCHEDULED',
           id: { not: appointment.id },
@@ -242,3 +286,4 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
     };
   }
 }
+
