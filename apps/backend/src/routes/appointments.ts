@@ -167,7 +167,7 @@ appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
         where: {
           clinicId,
           doctorId,
-          status: { not: AppointmentStatus.CANCELLED },
+          status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW] },
           AND: [
             { startsAt: { lt: endsAt } },
             { endsAt: { gt: startsAt } },
@@ -316,7 +316,7 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
           where: {
             clinicId,
             doctorId: targetDoctorId,
-            status: { not: AppointmentStatus.CANCELLED },
+            status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW] },
             id: { not: existing.id },
             AND: [
               { startsAt: { lt: checkEndsAt } },

@@ -157,7 +157,7 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
         where: {
           clinicId,
           doctorId: doctor.id,
-          status: { not: 'CANCELLED' },
+          status: { notIn: ['CANCELLED', 'COMPLETED', 'NO_SHOW'] },
           AND: [
             { startsAt: { lt: endsAt } },
             { endsAt: { gt: startsAt } },

@@ -1,6 +1,6 @@
 import { prisma } from '../db/client.js';
 import { getDefaultClinic } from '../db/clinic.js';
-import { getIstanbulDayRange, parseIstanbulDate } from '../date-utils.js';
+import { getIstanbulDayRange, parseIstanbulDate, formatIstanbulDateStr } from '../date-utils.js';
 
 export interface CheckAvailabilityParams {
   clinicId?: string;
@@ -85,18 +85,14 @@ export async function checkAvailability(
   if (params.date) {
     try {
       targetDate = parseIstanbulDate(params.date);
-      dateStr = params.date.trim().includes('T')
-        ? params.date.trim().split('T')[0]
-        : params.date.trim().slice(0, 10);
+      dateStr = formatIstanbulDateStr(targetDate);
     } catch {
       targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const dIso = new Date(targetDate.getTime() + 3 * 60 * 60 * 1000).toISOString();
-      dateStr = dIso.split('T')[0];
+      dateStr = formatIstanbulDateStr(targetDate);
     }
   } else {
     targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const dIso = new Date(targetDate.getTime() + 3 * 60 * 60 * 1000).toISOString();
-    dateStr = dIso.split('T')[0];
+    dateStr = formatIstanbulDateStr(targetDate);
   }
 
   // Calculate day name in Europe/Istanbul (+03:00)
@@ -182,7 +178,7 @@ export async function checkAvailability(
     where: {
       clinicId,
       doctorId: doctor.id,
-      status: { not: 'CANCELLED' },
+      status: { notIn: ['CANCELLED', 'COMPLETED', 'NO_SHOW'] },
       startsAt: { lte: endOfDay },
       endsAt: { gte: startOfDay },
     },

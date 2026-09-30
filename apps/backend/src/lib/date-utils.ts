@@ -91,3 +91,10 @@ export function formatIstanbulDate(
   });
 }
 
+/**
+ * Returns ISO calendar date string ("YYYY-MM-DD") strictly in Europe/Istanbul timezone (UTC+3).
+ */
+export function formatIstanbulDateStr(date: Date): string {
+  return date.toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+}
+
