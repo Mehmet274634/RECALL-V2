@@ -10,6 +10,7 @@
     "format": "pnpm -r format",
     "format:check": "pnpm -r format:check",
     "test": "pnpm -r test",
+    "sync:vapi": "pnpm --filter backend sync:vapi",
     "postinstall": "pnpm --filter backend exec prisma generate"
   },
   "devDependencies": {

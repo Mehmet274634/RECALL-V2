@@ -45,7 +45,7 @@
           },
           "patientPhone": {
             "type": "string",
-            "description": "Hastanın geçerli cep telefonu numarası (örn: 05321234567)"
+            "description": "Hastanın geçerli cep telefonu numarası (örn: 05321234567). Hasta arayan numarayı onayladıysa gönderme."
           },
           "useCallerNumber": {
             "type": "boolean",
@@ -68,7 +68,7 @@
             "description": "Doktor uzmanlık alanı (opsiyonel)"
           }
         },
-        "required": ["patientName", "date", "time"]
+        "required": ["date", "time", "patientName"]
       }
     },
     "server": {
@@ -93,7 +93,7 @@
           },
           "patientPhone": {
             "type": "string",
-            "description": "Randevusu sorgulanacak hastanın cep telefonu numarası (örn: 05321234567)"
+            "description": "Randevusu sorgulanacak hastanın cep telefonu numarası (örn: 05321234567). Hasta arayan numarayı onayladıysa gönderme."
           },
           "useCallerNumber": {
             "type": "boolean",
@@ -125,7 +125,7 @@
           },
           "patientPhone": {
             "type": "string",
-            "description": "Randevusu iptal edilecek hastanın cep telefonu numarası"
+            "description": "Randevusu iptal edilecek hastanın cep telefonu numarası. Hasta arayan numarayı onayladıysa gönderme."
           },
           "useCallerNumber": {
             "type": "boolean",
@@ -161,7 +161,7 @@
           },
           "patientPhone": {
             "type": "string",
-            "description": "Randevusu ertelenecek hastanın cep telefonu numarası"
+            "description": "Randevusu ertelenecek hastanın cep telefonu numarası. Hasta arayan numarayı onayladıysa gönderme."
           },
           "useCallerNumber": {
             "type": "boolean",

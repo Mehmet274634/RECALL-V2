@@ -26,3 +26,8 @@ Thumbs.db
 # Prisma - migrations ARE committed (don't ignore them)
 # Only ignore the generated client
 apps/backend/node_modules/.prisma/
+
+# Vapi Sync Backups
+backups/
+apps/backend/backups/
+

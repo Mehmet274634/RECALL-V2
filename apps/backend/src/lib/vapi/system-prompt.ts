@@ -9,6 +9,10 @@ export interface BuiltSystemPrompt {
   clinicName: string;
 }
 
+export interface BuildSystemPromptOptions {
+  forVapiPanel?: boolean;
+}
+
 /**
  * Builds a dynamic, customized system prompt for a specific clinic.
  * Preserves the fixed architectural skeleton (112 emergency triage, identity,
@@ -25,9 +29,25 @@ export async function buildSystemPrompt(clinicId?: string): Promise<string> {
 }
 
 /**
+ * Builds system prompt specifically formatted for the Vapi Dashboard static panel prompt:
+ * - Uses Vapi Liquid syntax for date: {{"now" | date: "%Y-%m-%d %A %H:%M", "Europe/Istanbul"}}
+ * - Injects real clinic values (doctors, cancellation hours, specialties)
+ * - Excludes greeting block (greeting is placed in Vapi's First Message)
+ * - Has no template placeholders or "ÖNEMLİ NOT"
+ */
+export async function buildPanelSystemPrompt(clinicId?: string): Promise<string> {
+  const result = await buildSystemPromptDetails(clinicId, { forVapiPanel: true });
+  return result.prompt;
+}
+
+/**
  * Builds prompt along with clinic metadata (such as voiceId).
  */
-export async function buildSystemPromptDetails(clinicId?: string): Promise<BuiltSystemPrompt> {
+export async function buildSystemPromptDetails(
+  clinicId?: string,
+  options?: BuildSystemPromptOptions,
+): Promise<BuiltSystemPrompt> {
+
   let clinic = null;
 
   if (clinicId) {
@@ -72,6 +92,16 @@ export async function buildSystemPromptDetails(clinicId?: string): Promise<Built
   const specialInstructions = clinic.specialInstructions?.trim() || null;
 
   // Build Doctor Roster Section
+  const TURKISH_DAY_NAMES: Record<string, string> = {
+    monday: 'Pazartesi',
+    tuesday: 'Salı',
+    wednesday: 'Çarşamba',
+    thursday: 'Perşembe',
+    friday: 'Cuma',
+    saturday: 'Cumartesi',
+    sunday: 'Pazar',
+  };
+
   let doctorsSection = '';
   if (!clinic.doctors || clinic.doctors.length === 0) {
     doctorsSection =
@@ -82,7 +112,18 @@ export async function buildSystemPromptDetails(clinicId?: string): Promise<Built
         const wh = (doc.workingHours as Record<string, unknown>) || {};
         const start = (wh.start as string) || '09:00';
         const end = (wh.end as string) || '17:00';
-        const days = Array.isArray(wh.days) ? (wh.days as string[]).join(', ') : 'Hafta içi';
+        const rawDays = Array.isArray(wh.days) ? (wh.days as string[]) : [];
+        const isStandardWeekdays =
+          rawDays.length === 5 &&
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].every((d) =>
+            rawDays.map((x) => x.toLowerCase()).includes(d),
+          );
+        const days = isStandardWeekdays
+          ? 'Hafta içi her gün'
+          : rawDays.length > 0
+            ? rawDays.map((d) => TURKISH_DAY_NAMES[d.toLowerCase()] || d).join(', ')
+            : 'Hafta içi her gün';
+
         const specialty = doc.specialty || 'Genel Muayene';
         const complaints = (wh.complaints as string) || '';
         const complaintInfo = complaints ? ` (İlgilendiği şikayetler: ${complaints})` : '';
@@ -107,15 +148,21 @@ export async function buildSystemPromptDetails(clinicId?: string): Promise<Built
   const currentIstanbulTimeStr = formatIstanbulTime(now);
   const currentIsoDate = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
 
-  const prompt = `Bugünün tarihi ve saati: ${currentIstanbulDateStr} saat ${currentIstanbulTimeStr} (Europe/Istanbul, YYYY-MM-DD: ${currentIsoDate})
-"Bugün", "yarın", "haftaya", "cuma" gibi ifadeleri bu tarihe göre hesapla. Sistem araçlarına (tools) tarihi her zaman YYYY-MM-DD biçiminde gönder.
+  const dateHeader = options?.forVapiPanel
+    ? `Bugünün tarihi ve saati: {{"now" | date: "%Y-%m-%d %A %H:%M", "Europe/Istanbul"}}
+"Bugün", "yarın", "haftaya", "cuma" gibi ifadeleri bu tarihe göre hesapla. Sistem araçlarına (tools) tarihi her zaman YYYY-MM-DD biçiminde gönder.`
+    : `Bugünün tarihi ve saati: ${currentIstanbulDateStr} saat ${currentIstanbulTimeStr} (Europe/Istanbul, YYYY-MM-DD: ${currentIsoDate})
+"Bugün", "yarın", "haftaya", "cuma" gibi ifadeleri bu tarihe göre hesapla. Sistem araçlarına (tools) tarihi her zaman YYYY-MM-DD biçiminde gönder.`;
+
+  const greetingBlock = options?.forVapiPanel
+    ? ''
+    : `\nÖZEL KARŞILAMA ŞABLONUN:\n"${greeting}"\n`;
+
+  const prompt = `${dateHeader}
 
 Sen "${clinicName}"nin güler yüzlü, profesyonel ve yardımsever yapay zeka telefon sekreterisin.
 Görevin: Arayan hastaları samimi ve net bir Türkçeyle karşılamak, randevu oluşturmak, mevcut randevularını sorgulamak, iptal veya saat değişikliği (erteleme) taleplerini yönetmek ve gerekirse klinik sekreterine aktarmaktır.
-
-ÖZEL KARŞILAMA ŞABLONUN:
-"${greeting}"
-
+${greetingBlock}
 ========================================
 1. KRİTİK GÜVENLİK VE ACİL DURUM KURALI (EN YÜKSEK ÖNCELİK)
 ========================================

@@ -16,6 +16,7 @@
     "test:all": "tsx scripts/test-security-isolation.ts && tsx scripts/test-http-security.ts && tsx scripts/test-timezone-reschedule.ts",
     "db:seed": "tsx scripts/seed.ts",
     "clinic:onboard": "tsx scripts/onboard-clinic.ts",
+    "sync:vapi": "tsx scripts/sync-vapi.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
