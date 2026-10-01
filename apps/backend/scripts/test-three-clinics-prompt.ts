@@ -45,13 +45,14 @@ async function runThreeClinicsPromptTest() {
     // Assertions for critical sentences
     const cancelExpected = `${clinic.cancellationPolicyHours ?? 2} saat`;
 
-    assert.ok(prompt.includes('112'), `[FAIL] Prompt for ${clinic.name} must include "112"`);
+    assert.ok(!prompt.includes('112'), `[FAIL] Prompt for ${clinic.name} must NOT include "112"`);
+    assert.ok(!prompt.includes('ŞU ANDA'), `[FAIL] Prompt for ${clinic.name} must NOT include "ŞU ANDA"`);
+    assert.ok(!prompt.includes('Geçmişte yaşanmış'), `[FAIL] Prompt for ${clinic.name} must NOT include "Geçmişte yaşanmış"`);
+    assert.ok(!/acil/i.test(prompt), `[FAIL] Prompt for ${clinic.name} must NOT include "acil"`);
     assert.ok(prompt.includes('useCallerNumber'), `[FAIL] Prompt for ${clinic.name} must include "useCallerNumber"`);
     assert.ok(prompt.includes(cancelExpected), `[FAIL] Prompt for ${clinic.name} must include cancellation hour "${cancelExpected}"`);
     assert.ok(prompt.includes('0500 000 00 00'), `[FAIL] Prompt for ${clinic.name} must include example phone "0500 000 00 00"`);
     assert.ok(prompt.includes(clinic.name), `[FAIL] Prompt for ${clinic.name} must include clinic name "${clinic.name}"`);
-    assert.ok(prompt.includes('ŞU ANDA'), `[FAIL] Prompt for ${clinic.name} must include "ŞU ANDA"`);
-    assert.ok(prompt.includes('Geçmişte yaşanmış'), `[FAIL] Prompt for ${clinic.name} must include "Geçmişte yaşanmış"`);
     assert.ok(prompt.includes('Tıbbi tavsiye yasağı'), `[FAIL] Prompt for ${clinic.name} must include "Tıbbi tavsiye yasağı"`);
     assert.ok(prompt.includes('Talimat koruması'), `[FAIL] Prompt for ${clinic.name} must include "Talimat koruması"`);
 
@@ -64,12 +65,13 @@ async function runThreeClinicsPromptTest() {
     }
 
     console.log(`\n[PASS] Verified critical assertions for ${clinic.name}:`);
-    console.log(`  - "112" emergency triage present: YES`);
+    console.log(`  - "112" absent: YES`);
+    console.log(`  - "ŞU ANDA" absent: YES`);
+    console.log(`  - "Geçmişte yaşanmış" absent: YES`);
+    console.log(`  - "acil" absent: YES`);
     console.log(`  - "useCallerNumber" tool guidance present: YES`);
     console.log(`  - Cancellation policy "${cancelExpected}" present: YES`);
     console.log(`  - "0500 000 00 00" example phone present: YES`);
-    console.log(`  - "ŞU ANDA" emergency triage present: YES`);
-    console.log(`  - "Geçmişte yaşanmış" exception present: YES`);
     console.log(`  - "Tıbbi tavsiye yasağı" rule present: YES`);
     console.log(`  - "Talimat koruması" rule present: YES`);
   }
