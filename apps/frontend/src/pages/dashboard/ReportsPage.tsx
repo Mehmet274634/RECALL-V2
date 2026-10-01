@@ -30,6 +30,7 @@ import {
 } from 'recharts';
 
 import { api, ApiError, type AnalyticsSummary } from '../../lib/api';
+import { getIstanbulDateParts } from '../../lib/date';
 
 const STATUS_COLORS: Record<string, string> = {
   SCHEDULED: '#3b82f6', // blue
@@ -57,7 +58,7 @@ export default function ReportsPage() {
   // Calculate default dates
   const calculateDates = useCallback(() => {
     const today = new Date();
-    const toStr = today.toISOString().split('T')[0];
+    const toStr = getIstanbulDateParts(today).dateStr;
 
     if (selectedRange === 'custom') {
       return {
@@ -67,9 +68,8 @@ export default function ReportsPage() {
     }
 
     const days = parseInt(selectedRange, 10);
-    const fromDate = new Date();
-    fromDate.setDate(today.getDate() - days);
-    const fromStr = fromDate.toISOString().split('T')[0];
+    const fromDate = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+    const fromStr = getIstanbulDateParts(fromDate).dateStr;
 
     return { from: fromStr, to: toStr };
   }, [selectedRange, customFrom, customTo]);

@@ -59,6 +59,17 @@ export default function DashboardPage() {
   const [rescheduleDurationMinutes, setRescheduleDurationMinutes] = useState<number>(30);
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
+
+  // Istanbul dates for quick filters and minimum date selection
+  const todayStr = getIstanbulDateParts(new Date()).dateStr;
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = getIstanbulDateParts(tomorrowDate).dateStr;
+
+  const isPhoneValid =
+    !newPatientPhone.trim() ||
+    /^(\+90|0)?5\d{9}$/.test(newPatientPhone.replace(/[\s\-\(\)\.]/g, ''));
 
   const loadData = useCallback(async () => {
     try {
@@ -107,16 +118,23 @@ export default function DashboardPage() {
     id: string,
     status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW',
   ) => {
+    setStatusUpdateError(null);
     try {
       await api.updateAppointment(id, { status });
       await loadData();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error updating status:', error);
+      const msg = error instanceof Error ? error.message : 'Randevu durumu güncellenirken bir hata oluştu.';
+      setStatusUpdateError(`Durum güncellenemedi: ${msg}`);
     }
   };
 
   const handleCreateAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPhoneValid || !newPatientPhone.trim()) {
+      setCreateError('Lütfen geçerli bir cep telefonu numarası giriniz (örn: 05XX XXX XX XX veya +905XXXXXXXXX).');
+      return;
+    }
     setCreateSubmitting(true);
     setCreateError(null);
 
@@ -259,6 +277,23 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Status Update Action Error Banner */}
+      {statusUpdateError && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-900 dark:text-red-200 p-4 rounded-2xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+            <p className="text-sm font-medium">{statusUpdateError}</p>
+          </div>
+          <button
+            onClick={() => setStatusUpdateError(null)}
+            className="text-red-700 dark:text-red-300 hover:opacity-70 p-1 rounded-lg"
+            title="Kapat"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
@@ -329,9 +364,9 @@ export default function DashboardPage() {
           <div className="flex flex-wrap items-center gap-3">
             {/* Quick date buttons */}
             <button
-              onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+              onClick={() => setSelectedDate(todayStr)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                selectedDate === new Date().toISOString().split('T')[0]
+                selectedDate === todayStr
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-background border border-border text-foreground hover:bg-surface'
               }`}
@@ -340,17 +375,9 @@ export default function DashboardPage() {
             </button>
 
             <button
-              onClick={() => {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                setSelectedDate(tomorrow.toISOString().split('T')[0]);
-              }}
+              onClick={() => setSelectedDate(tomorrowStr)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                (() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  return selectedDate === tomorrow.toISOString().split('T')[0];
-                })()
+                selectedDate === tomorrowStr
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-background border border-border text-foreground hover:bg-surface'
               }`}
@@ -584,11 +611,21 @@ export default function DashboardPage() {
                 <input
                   type="tel"
                   required
-                  placeholder="Örn: +905321234567"
+                  placeholder="Örn: 0532 123 45 67 veya +905321234567"
                   value={newPatientPhone}
                   onChange={(e) => setNewPatientPhone(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className={`w-full bg-background border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                    !isPhoneValid && newPatientPhone.trim().length > 0
+                      ? 'border-amber-500 focus:border-amber-500'
+                      : 'border-border focus:border-primary'
+                  }`}
                 />
+                {!isPhoneValid && newPatientPhone.trim().length > 0 && (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 inline shrink-0" />
+                    Geçerli bir telefon numarası giriniz (örn: 0532 123 45 67 veya +905321234567).
+                  </p>
+                )}
               </div>
 
               <div>
@@ -622,6 +659,7 @@ export default function DashboardPage() {
                   <input
                     type="date"
                     required
+                    min={todayStr}
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -747,6 +785,7 @@ export default function DashboardPage() {
                   <input
                     type="date"
                     required
+                    min={todayStr}
                     value={rescheduleDate}
                     onChange={(e) => setRescheduleDate(e.target.value)}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

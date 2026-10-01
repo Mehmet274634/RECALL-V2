@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import {
@@ -11,6 +12,8 @@ import {
   Settings,
   BarChart3,
 } from 'lucide-react';
+
+import { api } from '../../lib/api';
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -26,6 +29,20 @@ export default function SecretaryLayout() {
   const navigate = useNavigate();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const [clinicName, setClinicName] = useState<string>('Klinik Yükleniyor...');
+
+  useEffect(() => {
+    api
+      .getClinic()
+      .then((data) => {
+        if (data.clinic?.name) {
+          setClinicName(data.clinic.name);
+        }
+      })
+      .catch(() => {
+        setClinicName('Sağlık Kliniği');
+      });
+  }, []);
 
   const displayName = user?.fullName || user?.firstName || 'Klinik Sekreteri';
   const displayEmail = user?.primaryEmailAddress?.emailAddress || 'sekreter@recall.health';
@@ -56,8 +73,8 @@ export default function SecretaryLayout() {
               <span className="text-lg font-bold text-primary-foreground tracking-wide">RECALL</span>
             </Link>
             <div className="flex items-center gap-1.5 text-xs text-white/70">
-              <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-              <span>Recall Sağlık Kliniği</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-accent shrink-0" />
+              <span className="truncate" title={clinicName}>{clinicName}</span>
             </div>
           </div>
 
