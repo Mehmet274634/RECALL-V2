@@ -44,6 +44,35 @@ const c = {
   dim: '\x1b[2m',
 };
 
+/**
+ * Builds the assistant's First Message including KVKK audio recording notice.
+ * Preserves the clinic's existing greeting while ensuring legal compliance across all clinics.
+ */
+export function buildFirstMessage(clinic: { name: string; greetingMessage?: string | null }): string {
+  const RECORDING_NOTICE = 'Görüşmelerimiz kalite ve hizmet standartları gereği kaydedilmektedir.';
+  const rawGreeting = clinic.greetingMessage?.trim();
+
+  if (!rawGreeting) {
+    return `Merhaba, ${clinic.name}'na hoş geldiniz. ${RECORDING_NOTICE} Size nasıl yardımcı olabilirim?`;
+  }
+
+  if (rawGreeting.includes('kaydedilmektedir') || rawGreeting.includes('kayıt')) {
+    return rawGreeting;
+  }
+
+  // Check if greeting contains a closing question/offer like "nasıl yardımcı olabilirim" or "yardımcı olabilirim"
+  const assistMatch = rawGreeting.match(/(?:Ben yapay zeka asistanınız,\s*)?(?:randevunuz için |size )?nasıl yardımcı olabilirim\??/i);
+  if (assistMatch && assistMatch.index !== undefined) {
+    const before = rawGreeting.slice(0, assistMatch.index).trim();
+    const assistPhrase = rawGreeting.slice(assistMatch.index).trim();
+    const cleanBefore = before.endsWith('.') || before.endsWith('!') ? before : `${before}.`;
+    return `${cleanBefore} ${RECORDING_NOTICE} ${assistPhrase}`;
+  }
+
+  const cleanGreeting = rawGreeting.endsWith('.') || rawGreeting.endsWith('!') ? rawGreeting : `${rawGreeting}.`;
+  return `${cleanGreeting} ${RECORDING_NOTICE}`;
+}
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const options: {
@@ -307,7 +336,8 @@ async function main() {
 
     currentAssistant = {
       id: assistantId || 'mock-assistant-id',
-      name: 'Recall Sağlık Kliniği Asistanı',
+      name: `${clinic.name} Asistanı`,
+      firstMessage: clinic.greetingMessage || `Merhaba, ${clinic.name}'na hoş geldiniz. Size nasıl yardımcı olabilirim?`,
       model: {
         provider: 'openai',
         model: 'gpt-4o',
@@ -435,6 +465,14 @@ async function main() {
 
   const promptHasDiff = printDiff('ASSISTANT SYSTEM PROMPT FARKI', currentPromptContent, newPanelPrompt);
 
+  const newFirstMessage = buildFirstMessage(clinic);
+  const currentFirstMessage = ((currentAssistant?.firstMessage as string) || '').trim();
+  const firstMessageHasDiff = printDiff(
+    'ASSISTANT FIRST MESSAGE (KVKK AYDINLATMA) FARKI',
+    currentFirstMessage,
+    newFirstMessage,
+  );
+
   let toolsHaveDiff = false;
   for (const toolName of TARGET_TOOL_NAMES) {
     const localDef = localTools.get(toolName)!;
@@ -453,7 +491,7 @@ async function main() {
   if (!options.apply) {
     console.log(`\n${c.bold}====================================================${c.reset}`);
     console.log(`${c.green}${c.bold}DRY-RUN TAMAMLANDI (Vapi'ye hiçbir istek yazılmadı).${c.reset}`);
-    if (promptHasDiff || toolsHaveDiff) {
+    if (promptHasDiff || toolsHaveDiff || firstMessageHasDiff) {
       console.log(`${c.yellow}Farklar tespit edildi. Bu değişiklikleri Vapi'ye uygulamak için:${c.reset}`);
       console.log(`  ${c.cyan}pnpm sync:vapi --clinic ${clinic.id} --apply${c.reset}`);
     } else {
@@ -464,7 +502,7 @@ async function main() {
   }
 
   // APPLY MODE
-  if (!promptHasDiff && !toolsHaveDiff) {
+  if (!promptHasDiff && !toolsHaveDiff && !firstMessageHasDiff) {
     console.log(`\n${c.green}Değişiklik bulunamadı, Vapi zaten güncel.${c.reset}`);
     return;
   }
@@ -503,7 +541,8 @@ async function main() {
   const updatedMessages = messages.filter((m) => m.role !== 'system');
   updatedMessages.unshift({ role: 'system', content: newPanelPrompt });
 
-  const asstPatchPayload = {
+  const asstPatchPayload: Record<string, unknown> = {
+    firstMessage: newFirstMessage,
     model: {
       ...modelObj,
       messages: updatedMessages,
