@@ -130,18 +130,19 @@ export function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
   return {
     dialedNumber,
     callerNumber,
-    phoneNumber: dialedNumber || callerNumber,
+    phoneNumber: dialedNumber,
     clinicId,
   };
 }
 
 /**
  * Resolves Clinic instance from body.
+ * Clinic is resolved ONLY via clinicId metadata or inbound dialed number (to).
+ * Caller number (customer.number) is NEVER used to resolve clinic identity.
  * If clinic cannot be resolved, returns null.
- * FALLBACK TO DEFAULT CLINIC HAS BEEN REMOVED to prevent cross-clinic data leakage.
  */
 export async function resolveClinicForRequest(body: Record<string, unknown>): Promise<Clinic | null> {
-  const { dialedNumber, callerNumber, clinicId } = extractPhoneNumberOrClinic(body);
+  const { dialedNumber, clinicId } = extractPhoneNumberOrClinic(body);
 
   if (clinicId) {
     const clinicById = await prisma.clinic.findUnique({
@@ -150,16 +151,10 @@ export async function resolveClinicForRequest(body: Record<string, unknown>): Pr
     if (clinicById) return clinicById;
   }
 
-  // 1. Check inbound dialed number first
+  // Check inbound dialed number
   if (dialedNumber) {
     const clinicByDialed = await findClinicByPhoneNumber(dialedNumber);
     if (clinicByDialed) return clinicByDialed;
-  }
-
-  // 2. Check caller number as secondary fallback
-  if (callerNumber) {
-    const clinicByCaller = await findClinicByPhoneNumber(callerNumber);
-    if (clinicByCaller) return clinicByCaller;
   }
 
   return null;

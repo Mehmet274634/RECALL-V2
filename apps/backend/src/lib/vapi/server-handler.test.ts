@@ -58,6 +58,20 @@ describe('server-handler: E.164 normalization and clinic resolution', () => {
     expect(resolved).toBeNull();
   });
 
+  it('does NOT resolve clinic using caller number (customer.number) even if caller number matches a clinic', async () => {
+    // Recall clinic phone number is +902125550101
+    const payload = {
+      message: {
+        type: 'tool-calls',
+        customer: { number: '+902125550101' }, // caller number matches clinic in DB
+        // no dialed number (phoneNumberObj, call.phoneNumber, call.to, message.to) and no clinicId
+      },
+    };
+
+    const resolved = await resolveClinicForRequest(payload);
+    expect(resolved).toBeNull();
+  });
+
   it('returns safe error result for tool-calls when clinic is not detected', async () => {
     const req = {
       body: {
