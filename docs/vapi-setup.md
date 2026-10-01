@@ -46,32 +46,67 @@ Asistanın randevu sorgulama, alma, iptal ve erteleme yapabilmesi için Custom T
 
 ---
 
-## 4. Asistan Sistem Promptu: Statik vs. Dinamik Yapı
+## 4. Asistan Sistem Promptu: Dinamik `assistant-request` Akışı
 
-### Yöntem A: Dinamik Prompt (Önerilen — `assistant-request`)
-RECALL backend'i, çağrı bağlandığı anda Vapi'nin gönderdiği `assistant-request` webhook'una yanıt olarak o kliniğin en güncel doktor kadrosunu, mesai saatlerini, branşlarını ve iptal politikasını içeren dinamik bir prompt döndürür ([`system-prompt.ts`](../apps/backend/src/lib/vapi/system-prompt.ts)).
-- **Avantajı:** Klinikte doktor eklendiğinde, çalışma saatleri değiştiğinde veya yeni bir klinik açıldığında Vapi Dashboard'da prompt güncellemeniz **gerekmez**. Sistem veritabanından dinamik beslenir.
+### Genel Bakış
+RECALL backend'i, çağrı bağlandığında Vapi'nin gönderdiği `assistant-request` webhook'una `assistantId + assistantOverrides` şeklinde yanıt verir. Bu yöntemde Dashboard asistanının araç (tools) tanımları **korunur**; sadece sistem promptu, `firstMessage` ve `variableValues` dinamik olarak üretilir.
 
-### Yöntem B: Statik Prompt (Yedek / Manuel)
-Eğer asistanın `assistant-request` beklemeden doğrudan sabit bir prompt ile konuşmasını isterseniz, [`apps/backend/src/lib/vapi/system-prompt.ts`](../apps/backend/src/lib/vapi/system-prompt.ts) dosyasındaki şablon metni kopyalayarak Vapi Dashboard'daki **Model -> System Prompt** alanına yapıştırabilirsiniz.
+### Yanıt Yapısı
+```json
+{
+  "assistantId": "<VAPI_BASE_ASSISTANT_ID>",
+  "assistantOverrides": {
+    "firstMessage": "Merhaba, Recall Sağlık Kliniği...",
+    "model": {
+      "messages": [{ "role": "system", "content": "<dinamik klinik prompt>" }]
+    },
+    "voice": { "voiceId": "...", "provider": "..." },
+    "variableValues": { "clinicId": "<id>" },
+    "metadata":       { "clinicId": "<id>" }
+  }
+}
+```
+- **`assistantId`:** Dashboard'daki base asistanın ID'si. Araçlar (tools) bu asistandan gelir.
+- **`variableValues.clinicId` + `metadata.clinicId`:** Sonraki `tool-calls` isteklerinde kliniği çözmek için kullanılır.
+
+### Zorunlu Ortam Değişkeni
+```
+VAPI_BASE_ASSISTANT_ID="va_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+Değer eksikse backend hata loglar ve `{ "error": "..." }` döner; asistan konuşmayı güvenli şekilde bitirir.
+
+### Sistem Promptu (Dinamik)
+Klinik bulunduğunda [`system-prompt.ts`](../apps/backend/src/lib/vapi/system-prompt.ts) doktorları, mesai saatlerini, branşları ve iptal politikasını veritabanından okuyarak derler. Klinik güncellendiğinde Vapi Dashboard'da **hiçbir şey değiştirmenize gerek yoktur**.
 
 ---
 
-## 5. Web Testi ve Çoklu Klinik Eşleşmesi (`variableValues.clinicId`)
+## 5. Klinik Çözümleme Önceliği ve SIP Arama
 
-Telefon aramalarında aranan numara (+90...) üzerinden klinik otomatik tespit edilir. Ancak Vapi Dashboard üzerindeki **"Talk" (Web Test)** widget'ında gerçek bir telefon numarası bulunmaz.
+Backend, her Vapi isteğinde kliniği şu sırayla tespit eder:
 
-- **Web testinde belirli bir kliniği test etmek için:**
-  1. Vapi Dashboard -> Asistan sayfasında sağdaki **Test / Talk** panelini açın.
-  2. **Assistant Overrides** veya **Variable Values** bölümüne gidin.
-  3. Değişken olarak test edeceğiniz kliniğin ID'sini ekleyin:
-     ```json
-     {
-       "clinicId": "cmujsx0740000uyq8jo95ywjg"
-     }
-     ```
-  4. Bu sayede web araması doğrudan ilgili kliniğin doktorlarına ve takvimine bağlanır.
-- **Eğer `clinicId` belirtilmezse:** Backend güvenlik uyarısı loglayarak (`[vapi] Inbound request missing phoneNumber and clinicId metadata...`) otomatik olarak veritabanındaki varsayılan kliniğe (Recall Sağlık Kliniği) düşer.
+| Öncelik | Kaynak | Örnek |
+|---------|--------|-------|
+| 1 | `variableValues.clinicId` veya `metadata.clinicId` | Çağrı başlatılırken `assistantOverrides` ile gönderilir |
+| 2 | `req.query.clinicId` (URL parametresi) | `?clinicId=cmujsx0740000uyq8jo95ywjg` |
+| 3 | Aranan numara (`phoneNumber.number` / `call.to` / `message.to`) | `+902125550101` → DB'de eşlenir |
+
+**SIP adresleri:** `sip:xxx@sip.vapi.ai` formatındaki numaralar E.164 normalizeye sokulMaz; telefon araması atlanır. Bu durumda klinik `variableValues/metadata.clinicId` veya `query.clinicId` ile çözülmelidir.
+
+**Klinik bulunamazsa:** `{ error: "..." }` döner, asistan güvenli şekilde konuşmayı bitirir. Yedek/fallback klinik yoktur.
+
+### Vapi Dashboard — Web Testi
+
+1. Asistan sayfasında **Test / Talk** panelini açın.
+2. **Variable Values** bölümüne tıklayın.
+3. `clinicId` değişkenini ekleyin:
+   ```json
+   { "clinicId": "cmujsx0740000uyq8jo95ywjg" }
+   ```
+4. Konuşma başlar başlamaz backend ilgili kliniğin doktorlarına ve takvimine bağlanır.
+
+### SIP Numarası ile Canlı Test
+
+Vapi panelindeki SIP numarasını (`sip:recalltest-4829@sip.vapi.ai`) kullanıyorsanız asistanın **Assistant** alanını boş bırakın ve **Server URL**'yi `assistant-request` döndürecek şekilde yapılandırın. Backend, `VAPI_BASE_ASSISTANT_ID` + klinike ait `assistantOverrides` ile yanıt verir.
 
 ---
 

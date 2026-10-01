@@ -12,6 +12,7 @@ import {
   handleTransferCall,
 } from './tools/index.js';
 import { buildSystemPromptDetails } from './system-prompt.js';
+import { buildFirstMessage } from './first-message.js';
 import { captureBackendException } from '../logging/sentry.js';
 
 /**
@@ -35,14 +36,16 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
 
   console.log(`[vapi] Received message.type: ${messageType}`);
 
+  const query = req.query as Record<string, unknown> | undefined;
+
   switch (messageType) {
     // --- Synchronous message types (require JSON response) ---
     case 'tool-calls':
-      await handleToolCalls(body, res);
+      await handleToolCalls(body, res, query);
       break;
 
     case 'assistant-request':
-      await handleAssistantRequest(body, res);
+      await handleAssistantRequest(body, res, query);
       break;
 
     case 'transfer-destination-request':
@@ -66,7 +69,7 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
       break;
 
     case 'end-of-call-report':
-      await handleEndOfCallReport(body);
+      await handleEndOfCallReport(body, query);
       res.status(200).json({});
       break;
 
@@ -90,6 +93,18 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
 export function maskPhoneNumber(phone?: string | null): string {
   if (!phone) return '[YOK]';
   const clean = phone.trim();
+  if (clean.toLowerCase().startsWith('sip:')) {
+    const atIndex = clean.indexOf('@');
+    if (atIndex > 4) {
+      const user = clean.slice(4, atIndex);
+      const host = clean.slice(atIndex);
+      const maskedUser =
+        user.length <= 4
+          ? '***'
+          : `${user.slice(0, 2)}***${user.slice(-2)}`;
+      return `sip:${maskedUser}${host}`;
+    }
+  }
   if (clean.length <= 4) return '***';
   const keepStart = Math.min(4, Math.floor(clean.length / 2));
   const keepEnd = 2;
@@ -98,9 +113,16 @@ export function maskPhoneNumber(phone?: string | null): string {
 }
 
 /**
- * Extracts inbound phone number or clinic identifier from Vapi message payload.
+ * Extracts inbound phone number or clinic identifier from Vapi message payload or request query.
+ * Priority:
+ * 1. variableValues / metadata clinicId (from Vapi payload)
+ * 2. req.query.clinicId / clinic_id (from Vapi Server URL query parameters)
+ * 3. Inbound dialed number (to)
  */
-export function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
+export function extractPhoneNumberOrClinic(
+  body: Record<string, unknown>,
+  query?: Record<string, unknown>,
+): {
   dialedNumber?: string;
   callerNumber?: string;
   phoneNumber?: string;
@@ -118,11 +140,14 @@ export function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
     (call?.to as string) ||
     (message?.to as string);
 
-  // 2. Custom metadata or assistant overrides
+  // 2. Custom metadata, assistant overrides, or query parameters
+  // Priority: 1. variableValues/metadata clinicId, 2. query clinicId
   const assistantOverrides = call?.assistantOverrides as Record<string, unknown> | undefined;
   const variableValues = assistantOverrides?.variableValues as Record<string, unknown> | undefined;
   const metadata = (variableValues || call?.metadata || message?.metadata) as Record<string, unknown> | undefined;
-  const clinicId = (metadata?.clinicId || metadata?.clinic_id) as string | undefined;
+  const metadataClinicId = (metadata?.clinicId || metadata?.clinic_id) as string | undefined;
+  const queryClinicId = (query?.clinicId || query?.clinic_id) as string | undefined;
+  const clinicId = metadataClinicId || queryClinicId;
 
   // 3. Customer number (caller)
   const callerNumber = customer?.number as string | undefined;
@@ -136,13 +161,19 @@ export function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
 }
 
 /**
- * Resolves Clinic instance from body.
- * Clinic is resolved ONLY via clinicId metadata or inbound dialed number (to).
+ * Resolves Clinic instance from body or query.
+ * Clinic is resolved via:
+ * 1. clinicId (metadata/variableValues or query.clinicId)
+ * 2. Inbound dialed number (to), ONLY if not a SIP URI.
+ * SIP addresses (sip:...) skip phone number lookup and are NOT passed to normalizeToE164.
  * Caller number (customer.number) is NEVER used to resolve clinic identity.
- * If clinic cannot be resolved, returns null.
+ * If clinic cannot be resolved, returns null (no fallback to default clinic).
  */
-export async function resolveClinicForRequest(body: Record<string, unknown>): Promise<Clinic | null> {
-  const { dialedNumber, clinicId } = extractPhoneNumberOrClinic(body);
+export async function resolveClinicForRequest(
+  body: Record<string, unknown>,
+  query?: Record<string, unknown>,
+): Promise<Clinic | null> {
+  const { dialedNumber, clinicId } = extractPhoneNumberOrClinic(body, query);
 
   if (clinicId) {
     const clinicById = await prisma.clinic.findUnique({
@@ -151,9 +182,15 @@ export async function resolveClinicForRequest(body: Record<string, unknown>): Pr
     if (clinicById) return clinicById;
   }
 
-  // Check inbound dialed number
+  // Check inbound dialed number (only if not a SIP URI)
   if (dialedNumber) {
-    const clinicByDialed = await findClinicByPhoneNumber(dialedNumber);
+    const trimmed = dialedNumber.trim();
+    if (trimmed.toLowerCase().startsWith('sip:')) {
+      // SIP addresses are network URIs, not E.164 phone numbers; skip phone number lookup & do NOT pass to normalizeToE164
+      return null;
+    }
+
+    const clinicByDialed = await findClinicByPhoneNumber(trimmed);
     if (clinicByDialed) return clinicByDialed;
   }
 
@@ -161,29 +198,54 @@ export async function resolveClinicForRequest(body: Record<string, unknown>): Pr
 }
 
 /**
- * Handles assistant-request: dynamically builds prompt and config for the resolved clinic.
+ * Handles assistant-request: dynamically builds prompt, voice and firstMessage for the resolved clinic.
+ * Returns assistantId + assistantOverrides to preserve base assistant tools & configuration.
  */
-async function handleAssistantRequest(body: Record<string, unknown>, res: Response): Promise<void> {
+async function handleAssistantRequest(
+  body: Record<string, unknown>,
+  res: Response,
+  query?: Record<string, unknown>,
+): Promise<void> {
+  const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body, query);
+
   try {
-    const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body);
-    const clinic = await resolveClinicForRequest(body);
+    const clinic = await resolveClinicForRequest(body, query);
     if (!clinic) {
       const maskedDialed = maskPhoneNumber(dialedNumber);
       const maskedCaller = maskPhoneNumber(callerNumber);
       console.warn(
         `[vapi] Clinic resolution failed for assistant-request (dialed: ${maskedDialed}, caller: ${maskedCaller})`,
       );
-      res.status(200).json({});
+      res.status(200).json({
+        error:
+          'Aradığınız sağlık merkezine şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyiniz.',
+      });
+      return;
+    }
+
+    const baseAssistantId =
+      process.env.VAPI_BASE_ASSISTANT_ID || process.env.VAPI_ASSISTANT_ID;
+
+    if (!baseAssistantId) {
+      console.error(
+        '[vapi] VAPI_BASE_ASSISTANT_ID is not configured in environment variables!',
+      );
+      res.status(200).json({
+        error:
+          'Aradığınız sağlık merkezine şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyiniz.',
+      });
       return;
     }
 
     const { prompt, voiceId, clinicName } = await buildSystemPromptDetails(clinic.id);
+    const firstMessage = buildFirstMessage(clinic);
 
     console.log(
       `[vapi] assistant-request resolved for clinic: ${clinicName} (${clinic.id}, phone: ${clinic.phoneNumber})`,
     );
 
-    const assistantConfig: Record<string, unknown> = {
+    const assistantOverrides: Record<string, unknown> = {
+      firstMessage,
       model: {
         messages: [
           {
@@ -192,10 +254,16 @@ async function handleAssistantRequest(body: Record<string, unknown>, res: Respon
           },
         ],
       },
+      variableValues: {
+        clinicId: clinic.id,
+      },
+      metadata: {
+        clinicId: clinic.id,
+      },
     };
 
     if (voiceId) {
-      assistantConfig.voice = {
+      assistantOverrides.voice = {
         provider: '11labs',
         model: 'eleven_multilingual_v2',
         voiceId,
@@ -203,11 +271,15 @@ async function handleAssistantRequest(body: Record<string, unknown>, res: Respon
     }
 
     res.status(200).json({
-      assistant: assistantConfig,
+      assistantId: baseAssistantId,
+      assistantOverrides,
     });
   } catch (error) {
     console.error('[vapi] Error handling assistant-request:', error);
-    res.status(200).json({});
+    res.status(200).json({
+      error:
+        'Aradığınız sağlık merkezine şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyiniz.',
+    });
   }
 }
 
@@ -215,7 +287,11 @@ async function handleAssistantRequest(body: Record<string, unknown>, res: Respon
  * Handles tool-calls message type.
  * Dispatches to the appropriate tool handler based on function name and tenant clinicId.
  */
-async function handleToolCalls(body: Record<string, unknown>, res: Response): Promise<void> {
+async function handleToolCalls(
+  body: Record<string, unknown>,
+  res: Response,
+  query?: Record<string, unknown>,
+): Promise<void> {
   const message = body?.message as Record<string, unknown> | undefined;
   const toolCallList = message?.toolCallList as Array<Record<string, unknown>> | undefined;
   const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
@@ -229,8 +305,8 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
     return;
   }
 
-  const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body);
-  const clinic = await resolveClinicForRequest(body);
+  const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body, query);
+  const clinic = await resolveClinicForRequest(body, query);
 
   if (!clinic) {
     const maskedDialed = maskPhoneNumber(dialedNumber);
@@ -539,7 +615,10 @@ export function extractStructuredCallSummary(
  * Handles end-of-call-report.
  * Saves summary, category, transcript, and recording to CallLog linked to resolved clinic.
  */
-async function handleEndOfCallReport(body: Record<string, unknown>): Promise<void> {
+async function handleEndOfCallReport(
+  body: Record<string, unknown>,
+  query?: Record<string, unknown>,
+): Promise<void> {
   try {
     const message = body?.message as Record<string, unknown> | undefined;
     const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
@@ -602,8 +681,8 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
       );
     }
 
-    const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body);
-    const clinic = await resolveClinicForRequest(body);
+    const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body, query);
+    const clinic = await resolveClinicForRequest(body, query);
     if (!clinic) {
       const maskedDialed = maskPhoneNumber(dialedNumber);
       const maskedCaller = maskPhoneNumber(callerNumber);
