@@ -116,4 +116,31 @@ describe('server-handler: E.164 normalization and clinic resolution', () => {
     expect(responseJson?.results?.[0]?.result).toContain('Şu an işleminizi tamamlayamıyorum');
     expect(responseJson?.results?.[0]?.result).toContain('kliniği doğrudan arayarak');
   });
+
+  it('all vapi/tools return safe error immediately when clinicId is missing', async () => {
+    const {
+      handleCheckAvailability,
+      handleBookAppointment,
+      handleLookupAppointment,
+      handleCancelAppointment,
+      handleRescheduleAppointment,
+    } = await import('./tools/index.js');
+
+    const expectedMsg = 'Şu an işleminizi tamamlayamıyorum, lütfen kliniği doğrudan arayarak sekreterliğe ulaşınız.';
+
+    const checkRes = await handleCheckAvailability({ date: '2026-10-05' }, undefined);
+    expect(checkRes).toBe(expectedMsg);
+
+    const bookRes = await handleBookAppointment({ patientName: 'Ahmet', patientPhone: '05321112233', date: '2026-10-05', time: '10:00' }, undefined, undefined, '05321112233');
+    expect(bookRes).toBe(expectedMsg);
+
+    const lookupRes = await handleLookupAppointment({ patientName: 'Ahmet', patientPhone: '05321112233' }, undefined, '05321112233');
+    expect(lookupRes).toBe(expectedMsg);
+
+    const cancelRes = await handleCancelAppointment({ patientName: 'Ahmet', patientPhone: '05321112233' }, undefined, '05321112233');
+    expect(cancelRes).toBe(expectedMsg);
+
+    const rescheduleRes = await handleRescheduleAppointment({ patientName: 'Ahmet', patientPhone: '05321112233', newDate: '2026-10-06', newTime: '11:00' }, undefined, '05321112233');
+    expect(rescheduleRes).toBe(expectedMsg);
+  });
 });

@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { prisma } from '../../db/client.js';
-import { getDefaultClinic } from '../../db/clinic.js';
 import { bookAppointment } from '../../scheduling/booking.js';
 import { normalizeTimeInput, getDoctorSlotDuration } from '../../scheduling/availability.js';
 import { normalizePhone, resolveToolPhone } from '../../phone.js';
@@ -67,12 +66,16 @@ export async function handleBookAppointment(
     return phoneResolution.errorMessage || 'Randevu kaydı için lütfen telefon numaranızı belirtiniz.';
   }
 
+  if (!clinicId) {
+    return 'Şu an işleminizi tamamlayamıyorum, lütfen kliniği doğrudan arayarak sekreterliğe ulaşınız.';
+  }
+
   if (!resolvedDate || !resolvedTime) {
     return 'Lütfen randevu tarihi ve saatini belirtiniz.';
   }
 
   try {
-    const resolvedClinicId = clinicId || (await getDefaultClinic()).id;
+    const resolvedClinicId = clinicId;
     const normPhone = normalizePhone(phoneResolution.phone);
 
     // Resolve doctor for repeat call check

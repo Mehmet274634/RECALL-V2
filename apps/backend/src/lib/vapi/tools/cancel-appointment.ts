@@ -22,6 +22,10 @@ export async function handleCancelAppointment(
   clinicId?: string,
   defaultCustomerNumber?: string,
 ): Promise<string> {
+  if (!clinicId) {
+    return 'Şu an işleminizi tamamlayamıyorum, lütfen kliniği doğrudan arayarak sekreterliğe ulaşınız.';
+  }
+
   const parsed = cancelAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu iptali için lütfen adınızı, soyadınızı ve telefon numaranızı belirtiniz.';

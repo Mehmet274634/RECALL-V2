@@ -20,6 +20,10 @@ export async function handleLookupAppointment(
   clinicId?: string,
   defaultCustomerNumber?: string,
 ): Promise<string> {
+  if (!clinicId) {
+    return 'Şu an işleminizi tamamlayamıyorum, lütfen kliniği doğrudan arayarak sekreterliğe ulaşınız.';
+  }
+
   const parsed = lookupAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevunuzu sorgulayabilmek için lütfen adınızı, soyadınızı ve telefon numaranızı belirtiniz.';

@@ -28,6 +28,10 @@ export async function handleRescheduleAppointment(
   clinicId?: string,
   defaultCustomerNumber?: string,
 ): Promise<string> {
+  if (!clinicId) {
+    return 'Şu an işleminizi tamamlayamıyorum, lütfen kliniği doğrudan arayarak sekreterliğe ulaşınız.';
+  }
+
   const parsed = rescheduleAppointmentSchema.safeParse(args || {});
   if (!parsed.success) {
     return 'Randevu saatinizi değiştirmek için lütfen adınızı, telefon numaranızı ve yeni tarih/saati belirtiniz.';
