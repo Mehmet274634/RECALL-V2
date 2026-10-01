@@ -6,7 +6,7 @@ import type { Appointment } from '@prisma/client';
 export { normalizePhone, isValidPhone } from '../phone.js';
 import { normalizePhone, isValidPhone } from '../phone.js';
 import { parseIstanbulDate, formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
-import { checkAvailability } from './availability.js';
+import { checkAvailability, getDoctorSlotDuration } from './availability.js';
 
 export interface BookAppointmentParams {
   clinicId?: string;
@@ -100,10 +100,10 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
     return { success: false, message: 'Geçersiz randevu tarihi veya saati belirtildi.' };
   }
 
-  const allowedDurations = [15, 30, 45, 60];
-  const duration = params.durationMinutes && allowedDurations.includes(params.durationMinutes)
+  const doctorSlotDuration = getDoctorSlotDuration(doctor);
+  const duration = params.durationMinutes && params.durationMinutes > 0
     ? params.durationMinutes
-    : 30;
+    : doctorSlotDuration;
   const endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
 
   // Past check

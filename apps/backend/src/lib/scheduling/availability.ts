@@ -71,6 +71,17 @@ export function findNearestAvailableSlots(
 }
 
 /**
+ * Extracts slot duration in minutes from a doctor's workingHours JSON.
+ * Defaults to 30 minutes if unspecified, invalid, or <= 0.
+ */
+export function getDoctorSlotDuration(doctor?: { workingHours?: unknown } | null): number {
+  if (!doctor || !doctor.workingHours) return 30;
+  const wh = (doctor.workingHours as Record<string, unknown>) || {};
+  const duration = typeof wh.slotDurationMinutes === 'number' ? wh.slotDurationMinutes : 30;
+  return duration > 0 ? duration : 30;
+}
+
+/**
  * Checks doctor/clinic slot availability for a given date.
  */
 export async function checkAvailability(
@@ -166,7 +177,7 @@ export async function checkAvailability(
 
   const startHourStr = (workingHours.start as string) || '09:00';
   const endHourStr = (workingHours.end as string) || '17:00';
-  const slotDuration = (workingHours.slotDurationMinutes as number) || 30;
+  const slotDuration = getDoctorSlotDuration(doctor);
 
   const [startH, startM] = startHourStr.split(':').map(Number);
   const [endH, endM] = endHourStr.split(':').map(Number);

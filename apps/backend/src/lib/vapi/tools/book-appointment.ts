@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/client.js';
 import { getDefaultClinic } from '../../db/clinic.js';
 import { bookAppointment } from '../../scheduling/booking.js';
-import { normalizeTimeInput } from '../../scheduling/availability.js';
+import { normalizeTimeInput, getDoctorSlotDuration } from '../../scheduling/availability.js';
 import { normalizePhone, resolveToolPhone } from '../../phone.js';
 import { parseIstanbulDate, formatIstanbulTime } from '../../date-utils.js';
 
@@ -119,7 +119,7 @@ export async function handleBookAppointment(
       }
 
       if (startsAt && !isNaN(startsAt.getTime())) {
-        const duration = 30;
+        const duration = getDoctorSlotDuration(doctor);
         const endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
 
         // Check if an active appointment already exists for this doctor and time slot
@@ -152,6 +152,7 @@ export async function handleBookAppointment(
       }
     }
 
+    const duration = getDoctorSlotDuration(doctor);
     const result = await bookAppointment({
       clinicId: resolvedClinicId,
       patientName: resolvedName,
@@ -160,6 +161,7 @@ export async function handleBookAppointment(
       specialty,
       date: resolvedDate,
       time: resolvedTime,
+      durationMinutes: duration,
       callId,
     });
     return result.message;
