@@ -9,11 +9,13 @@ import {
   canonicalizeAndStringify,
   hasToolSchemaDiff,
 } from '../src/lib/vapi/schema-canonicalize.js';
+import { buildFirstMessage } from '../src/lib/vapi/first-message.js';
 
 export {
   canonicalizeJson,
   canonicalizeAndStringify,
   hasToolSchemaDiff,
+  buildFirstMessage,
 };
 
 // Target tools to synchronize
@@ -55,34 +57,6 @@ const c = {
   dim: '\x1b[2m',
 };
 
-/**
- * Builds the assistant's First Message including KVKK audio recording notice.
- * Preserves the clinic's existing greeting while ensuring legal compliance across all clinics.
- */
-export function buildFirstMessage(clinic: { name: string; greetingMessage?: string | null }): string {
-  const RECORDING_NOTICE = 'Görüşmelerimiz kalite ve hizmet standartları gereği kaydedilmektedir.';
-  const rawGreeting = clinic.greetingMessage?.trim();
-
-  if (!rawGreeting) {
-    return `Merhaba, ${clinic.name}'na hoş geldiniz. ${RECORDING_NOTICE} Size nasıl yardımcı olabilirim?`;
-  }
-
-  if (rawGreeting.includes('kaydedilmektedir') || rawGreeting.includes('kayıt')) {
-    return rawGreeting;
-  }
-
-  // Check if greeting contains a closing question/offer like "nasıl yardımcı olabilirim" or "yardımcı olabilirim"
-  const assistMatch = rawGreeting.match(/(?:Ben yapay zeka asistanınız,\s*)?(?:randevunuz için |size )?nasıl yardımcı olabilirim\??/i);
-  if (assistMatch && assistMatch.index !== undefined) {
-    const before = rawGreeting.slice(0, assistMatch.index).trim();
-    const assistPhrase = rawGreeting.slice(assistMatch.index).trim();
-    const cleanBefore = before.endsWith('.') || before.endsWith('!') ? before : `${before}.`;
-    return `${cleanBefore} ${RECORDING_NOTICE} ${assistPhrase}`;
-  }
-
-  const cleanGreeting = rawGreeting.endsWith('.') || rawGreeting.endsWith('!') ? rawGreeting : `${rawGreeting}.`;
-  return `${cleanGreeting} ${RECORDING_NOTICE}`;
-}
 
 function parseArgs() {
   const args = process.argv.slice(2);
