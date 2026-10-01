@@ -13,6 +13,8 @@ import { statsRouter } from './routes/stats.js';
 import { clinicRouter } from './routes/clinic.js';
 import { adminRouter } from './routes/admin.js';
 import { analyticsRouter } from './routes/analytics.js';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 // --- Production Safety Guard ---
 // Must run before any route setup. Terminates immediately if security config is unsafe.
@@ -42,6 +44,26 @@ if (process.env.NODE_ENV === 'production') {
 initBackendSentry();
 
 const app = express();
+
+// --- Reverse Proxy Configuration (Vercel / Cloudflare) ---
+app.set('trust proxy', 1);
+
+// --- Security Headers (Helmet) ---
+app.use(helmet());
+
+// --- Rate Limiting for Panel APIs (Vapi Webhook routes /api/vapi/* are completely exempt) ---
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Çok fazla istek gönderildi. Lütfen daha sonra tekrar deneyin.' },
+  skip: (req) => {
+    return req.path.startsWith('/api/vapi') || req.originalUrl.startsWith('/api/vapi');
+  },
+});
+
+app.use('/api', apiLimiter);
 
 // --- CORS Configuration ---
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')

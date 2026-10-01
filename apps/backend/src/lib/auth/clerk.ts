@@ -89,7 +89,7 @@ export function getClerkClient() {
           redirectUrl?: string;
           ignoreExisting?: boolean;
         }) => {
-          console.log('[clerk:dev] Creating mock invitation:', params);
+          console.log('[clerk:dev] Creating mock invitation (email redacted)');
           return {
             id: `inv_mock_${Date.now()}`,
             emailAddress: params.emailAddress,

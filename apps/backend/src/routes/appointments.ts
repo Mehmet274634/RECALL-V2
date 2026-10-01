@@ -133,6 +133,11 @@ appointmentsRouter.post('/', async (req: AuthenticatedRequest, res) => {
     const startsAt = parseIstanbulDate(startsAtStr);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
 
+    if (startsAt.getTime() < Date.now()) {
+      res.status(400).json({ error: 'Geçmiş bir saate randevu oluşturulamaz.' });
+      return;
+    }
+
     const normalizedPhone = normalizePhone(patientPhone);
 
     // Validate doctorId belongs to this clinic (prevents cross-tenant doctorId injection)
@@ -299,6 +304,10 @@ appointmentsRouter.patch('/:id', async (req: AuthenticatedRequest, res) => {
     }
 
     if (scheduleChanged) {
+      if (targetStatus === 'SCHEDULED' && checkStartsAt.getTime() < Date.now()) {
+        res.status(400).json({ error: 'Randevunuz geçmiş bir tarihe veya saate alınamaz.' });
+        return;
+      }
       dataToUpdate.startsAt = checkStartsAt;
       dataToUpdate.endsAt = checkEndsAt;
     }

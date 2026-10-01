@@ -127,7 +127,7 @@ export async function handleBookAppointment(
           where: {
             clinicId: resolvedClinicId,
             doctorId: doctor.id,
-            status: { not: 'CANCELLED' },
+            status: { notIn: ['CANCELLED', 'COMPLETED', 'NO_SHOW'] },
             AND: [
               { startsAt: { lt: endsAt } },
               { endsAt: { gt: startsAt } },
