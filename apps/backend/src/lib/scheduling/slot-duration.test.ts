@@ -15,6 +15,9 @@ describe('Doctor Slot Duration & Conflict Logic', () => {
         phoneNumber: '+902129998877',
         timezone: 'Europe/Istanbul',
       },
+      select: {
+        id: true,
+      },
     });
     testClinicId = clinic.id;
 
@@ -35,6 +38,7 @@ describe('Doctor Slot Duration & Conflict Logic', () => {
   });
 
   afterEach(async () => {
+    if (!testClinicId) return;
     // Cleanup created test records
     await prisma.appointment.deleteMany({ where: { clinicId: testClinicId } });
     await prisma.patient.deleteMany({ where: { clinicId: testClinicId } });

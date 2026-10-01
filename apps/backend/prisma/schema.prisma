@@ -25,6 +25,8 @@ model Clinic {
   patients                Patient[]
   appointments            Appointment[]
   callLogs                CallLog[]
+  settingsUpdatedAt       DateTime?     @map("settings_updated_at")
+  settingVersions         ClinicSettingVersion[]
   createdAt               DateTime      @default(now()) @map("created_at")
   updatedAt               DateTime      @updatedAt @map("updated_at")
 
@@ -105,4 +107,16 @@ model CallLog {
   @@index([clinicId, createdAt])
   @@index([clinicId, category])
   @@map("call_logs")
+}
+
+model ClinicSettingVersion {
+  id        String   @id @default(cuid())
+  clinicId  String   @map("clinic_id")
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  snapshot  Json
+  changedBy String?  @map("changed_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([clinicId])
+  @@map("clinic_setting_versions")
 }

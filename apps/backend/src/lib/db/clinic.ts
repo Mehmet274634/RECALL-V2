@@ -81,15 +81,20 @@ export async function findClinicByPhoneNumber(phoneNumber?: string | null): Prom
     candidates.add(`+${rawTrimmed}`);
   }
 
-  const clinic = await prisma.clinic.findFirst({
-    where: {
-      phoneNumber: {
-        in: Array.from(candidates),
+  try {
+    const clinic = await prisma.clinic.findFirst({
+      where: {
+        phoneNumber: {
+          in: Array.from(candidates),
+        },
       },
-    },
-  });
+    });
 
-  return clinic;
+    return clinic;
+  } catch (error) {
+    console.error('[db] Error finding clinic by phone number:', error);
+    return null;
+  }
 }
 
 /**
