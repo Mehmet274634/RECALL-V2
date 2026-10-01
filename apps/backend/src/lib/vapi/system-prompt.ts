@@ -109,9 +109,38 @@ export async function buildSystemPromptDetails(
     return rawDays.some((d) => WEEKEND_DAY_KEYS.includes(d.toLowerCase()));
   });
 
+  const slotDurations = (clinic.doctors || []).map((doc) => {
+    const wh = (doc.workingHours as Record<string, unknown>) || {};
+    return typeof wh.slotDurationMinutes === 'number' ? wh.slotDurationMinutes : 30;
+  });
+  const uniqueDurations = Array.from(new Set(slotDurations));
+  const slotDurationText =
+    uniqueDurations.length === 1
+      ? `her randevu ${uniqueDurations[0]} dakikadır`
+      : uniqueDurations.length > 1
+        ? `randevu süreleri hekime göre ${uniqueDurations.join('/')} dakikadır`
+        : 'her randevu 30 dakikadır';
+
+  const weekendDaysPresent = new Set<string>();
+  for (const doc of clinic.doctors || []) {
+    const wh = (doc.workingHours as Record<string, unknown>) || {};
+    const rawDays = Array.isArray(wh.days) ? (wh.days as string[]) : [];
+    for (const d of rawDays) {
+      const lower = d.toLowerCase();
+      if (lower === 'saturday' || lower === 'cumartesi') weekendDaysPresent.add('Cumartesi');
+      if (lower === 'sunday' || lower === 'pazar') weekendDaysPresent.add('Pazar');
+    }
+  }
+
+  const weekendStepInstruction = hasWeekendWorkingDoctor
+    ? (weekendDaysPresent.size > 0
+        ? `Hafta sonu istenirse yalnızca açık olunan günlerde (${Array.from(weekendDaysPresent).join(', ')}) ilgili hekime randevu verilebilir; kapalı gün istenirse uygun günleri belirt.`
+        : 'Hafta sonu randevu taleplerinde hekimin çalışma günlerine göre randevu ver.')
+    : 'Hafta sonu istenirse hafta sonu randevu olmadığını söyleyip hafta içi bir gün öner.';
+
   const doctorSectionHeader = hasWeekendWorkingDoctor
-    ? 'Hekimler (her randevu 30 dakikadır):'
-    : 'Hekimler (her randevu 30 dakikadır, yalnızca hafta içi Pazartesi-Cuma, hafta sonu randevu yoktur):';
+    ? `Hekimler (${slotDurationText}):`
+    : `Hekimler (${slotDurationText}, yalnızca hafta içi Pazartesi-Cuma, hafta sonu randevu yoktur):`;
 
   // Helper to format time to spoken Turkish words (e.g. "09:00" -> "dokuz", "09:30" -> "dokuz buçuk", "17:00" -> "on yedi", "18:00" -> "on sekiz")
   const formatHourInWords = (timeStr: string): string => {
@@ -309,7 +338,7 @@ ${doctorsSection}
 A) YENİ RANDEVU, sırayla ve her adımda tek bilgi iste:
 1. Ad soyad. Alınca: "Adınızı [Ad Soyad] olarak anladım, doğru mu?" Hasta hayır derse ya da isim anlamsız görünürse harf harf söylemesini iste.
 2. Doktor ya da branş (belirtmezse sor).
-3. Tarih ve saat. Hasta saat söylediyse check_availability'yi o saatle çağır (time alanını mutlaka gönder). Müsaitse alternatif sayma, yalnızca o saati onaylat. Doluysa yakın alternatifleri öner. Saat söylemediyse müsait saatlerden en fazla üçünü öner. Hasta konuşmanın herhangi bir yerinde saat söylediyse tarih netleşince o saati kullan, tekrar sorma. Hafta sonu istenirse hafta sonu randevu olmadığını söyleyip hafta içi bir gün öner.
+3. Tarih ve saat. Hasta saat söylediyse check_availability'yi o saatle çağır (time alanını mutlaka gönder). Müsaitse alternatif sayma, yalnızca o saati onaylat. Doluysa yakın alternatifleri öner. Saat söylemediyse müsait saatlerden en fazla üçünü öner. Hasta konuşmanın herhangi bir yerinde saat söylediyse tarih netleşince o saati kullan, tekrar sorma. ${weekendStepInstruction}
 4. Telefon numarası (Bölüm 5 kuralları).
 5. Özet teyit: "[Ad Soyad], [gün adı] [tarih] saat [saat], [doktor] için randevu oluşturuyorum, telefonunuz [numara]. Onaylıyor musunuz?" Numarayı burada da rakam rakam oku. Numara onayı özet teyidin yerine geçmez; bu cümleyi ayrıca söyle.
 6. Hasta açıkça "evet" ya da "onaylıyorum" dedikten sonra book_appointment'ı çağır.

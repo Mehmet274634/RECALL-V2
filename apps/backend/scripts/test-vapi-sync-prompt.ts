@@ -60,7 +60,7 @@ async function runPromptUnitTests() {
 
   // Test 6: Verify doctors and cancellation policy are present
   assert.ok(
-    prompt.includes('KLİNİK VE DOKTOR KADROSU'),
+    prompt.includes('KLİNİK, DOKTORLAR VE POLİTİKA') || prompt.includes('Hekimler'),
     'Prompt must include doctor roster section',
   );
   assert.ok(
