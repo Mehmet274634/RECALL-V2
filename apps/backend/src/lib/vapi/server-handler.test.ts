@@ -94,14 +94,14 @@ describe('server-handler: E.164 normalization and clinic resolution', () => {
     } as unknown as Request;
 
     let responseStatus = 0;
-    let responseJson: { results?: Array<{ toolCallId: string; result: string }> } | null = null;
+    let responseJson: unknown = null;
 
     const res = {
       status: (code: number) => {
         responseStatus = code;
         return {
           json: (data: unknown) => {
-            responseJson = data as typeof responseJson;
+            responseJson = data;
           },
         };
       },
@@ -109,12 +109,13 @@ describe('server-handler: E.164 normalization and clinic resolution', () => {
 
     await handleServerMessage(req, res);
 
+    const body = responseJson as { results?: Array<{ toolCallId: string; result: string }> };
     expect(responseStatus).toBe(200);
-    expect(responseJson).toBeDefined();
-    expect(responseJson?.results).toHaveLength(1);
-    expect(responseJson?.results?.[0]?.toolCallId).toBe('tool-call-1');
-    expect(responseJson?.results?.[0]?.result).toContain('Şu an işleminizi tamamlayamıyorum');
-    expect(responseJson?.results?.[0]?.result).toContain('kliniği doğrudan arayarak');
+    expect(body).toBeDefined();
+    expect(body.results).toHaveLength(1);
+    expect(body.results?.[0]?.toolCallId).toBe('tool-call-1');
+    expect(body.results?.[0]?.result).toContain('Şu an işleminizi tamamlayamıyorum');
+    expect(body.results?.[0]?.result).toContain('kliniği doğrudan arayarak');
   });
 
   it('all vapi/tools return safe error immediately when clinicId is missing', async () => {

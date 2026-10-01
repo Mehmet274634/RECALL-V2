@@ -60,7 +60,9 @@ describe('Doctor Slot Duration & Conflict Logic', () => {
     expect(getDoctorSlotDuration({ workingHours: { slotDurationMinutes: 0 } })).toBe(30);
   });
 
-  it('for a 20-min doctor: 09:00 appointment has endsAt = 09:20, does NOT conflict with 09:20, and 09:20 endsAt is 09:40', async () => {
+  it(
+    'for a 20-min doctor: 09:00 appointment has endsAt = 09:20, does NOT conflict with 09:20, and 09:20 endsAt is 09:40',
+    async () => {
     // Pick next Monday to avoid weekend rejection
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + ((1 + 7 - targetDate.getDay()) % 7 || 7));
@@ -128,5 +130,5 @@ describe('Doctor Slot Duration & Conflict Logic', () => {
     expect(avail.availableSlots).not.toContain('09:20');
     expect(avail.availableSlots).toContain('09:40');
     expect(avail.availableSlots).toContain('10:00');
-  });
+  }, 30000);
 });

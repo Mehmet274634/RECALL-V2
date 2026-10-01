@@ -4,6 +4,17 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { prisma } from '../src/lib/db/client.js';
 import { buildPanelSystemPrompt } from '../src/lib/vapi/system-prompt.js';
+import {
+  canonicalizeJson,
+  canonicalizeAndStringify,
+  hasToolSchemaDiff,
+} from '../src/lib/vapi/schema-canonicalize.js';
+
+export {
+  canonicalizeJson,
+  canonicalizeAndStringify,
+  hasToolSchemaDiff,
+};
 
 // Target tools to synchronize
 const TARGET_TOOL_NAMES = [
@@ -480,8 +491,8 @@ async function main() {
     const vapiParams =
       ((vapiTool?.data as { function?: { parameters?: unknown } })?.function?.parameters) || {};
 
-    const localParamsJson = JSON.stringify(localDef.function.parameters, null, 2);
-    const vapiParamsJson = JSON.stringify(vapiParams, null, 2);
+    const localParamsJson = canonicalizeAndStringify(localDef.function.parameters);
+    const vapiParamsJson = canonicalizeAndStringify(vapiParams);
 
     const hasDiff = printDiff(`TOOL PARAMETRELERİ: ${toolName}`, vapiParamsJson, localParamsJson);
     if (hasDiff) toolsHaveDiff = true;
@@ -537,37 +548,48 @@ async function main() {
   fs.writeFileSync(backupFilePath, JSON.stringify(backupPayload, null, 2), 'utf-8');
   console.log(`${c.green}✓ Mevcut Vapi durumu yedeklendi:${c.reset} ${backupFilePath}`);
 
-  // 7. Execute PATCH for Assistant
-  const updatedMessages = messages.filter((m) => m.role !== 'system');
-  updatedMessages.unshift({ role: 'system', content: newPanelPrompt });
+  // 7. Execute PATCH for Assistant (only if prompt or firstMessage changed)
+  if (promptHasDiff || firstMessageHasDiff) {
+    const updatedMessages = messages.filter((m) => m.role !== 'system');
+    updatedMessages.unshift({ role: 'system', content: newPanelPrompt });
 
-  const asstPatchPayload: Record<string, unknown> = {
-    firstMessage: newFirstMessage,
-    model: {
-      ...modelObj,
-      messages: updatedMessages,
-    },
-  };
+    const asstPatchPayload: Record<string, unknown> = {
+      firstMessage: newFirstMessage,
+      model: {
+        ...modelObj,
+        messages: updatedMessages,
+      },
+    };
 
-  console.log(`[PATCH] Assistant (${assistantId}) system prompt güncelleniyor...`);
-  const patchAsstRes = await fetch(`https://api.vapi.ai/assistant/${assistantId}`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(asstPatchPayload),
-  });
+    console.log(`[PATCH] Assistant (${assistantId}) system prompt güncelleniyor...`);
+    const patchAsstRes = await fetch(`https://api.vapi.ai/assistant/${assistantId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(asstPatchPayload),
+    });
 
-  if (!patchAsstRes.ok) {
-    throw new Error(`Assistant güncellenemedi: ${patchAsstRes.status} ${await patchAsstRes.text()}`);
+    if (!patchAsstRes.ok) {
+      throw new Error(`Assistant güncellenemedi: ${patchAsstRes.status} ${await patchAsstRes.text()}`);
+    }
+    console.log(`${c.green}✓ Assistant system promptu başarıyla güncellendi.${c.reset}`);
+  } else {
+    console.log(`${c.dim}[ATLANDI] Assistant system prompt ve firstMessage zaten güncel.${c.reset}`);
   }
-  console.log(`${c.green}✓ Assistant system promptu başarıyla güncellendi.${c.reset}`);
 
-  // 8. Execute PATCH for each Tool
+  // 8. Execute PATCH for each Tool that actually has diff
   for (const toolName of TARGET_TOOL_NAMES) {
     const vapiTool = currentTools.get(toolName)!;
     const localDef = localTools.get(toolName)!;
+    const vapiParams =
+      ((vapiTool.data as { function?: { parameters?: unknown } })?.function?.parameters) || {};
+
+    if (!hasToolSchemaDiff(vapiParams, localDef.function.parameters)) {
+      console.log(`${c.dim}[ATLANDI] Tool '${toolName}' parametreleri zaten güncel, PATCH atlanıyor.${c.reset}`);
+      continue;
+    }
 
     console.log(`[PATCH] Tool '${toolName}' (${vapiTool.id}) parametreleri güncelleniyor...`);
     const toolPatchPayload = {
