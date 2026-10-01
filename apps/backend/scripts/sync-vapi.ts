@@ -278,6 +278,12 @@ async function main() {
   console.log(`${c.green}✓ Panel promptu üretildi (${newPanelPrompt.length} karakter).${c.reset}`);
   console.log(`${c.green}✓ ${localTools.size} adet hedef tool şeması docs/vapi-tools.json dosyasından okundu.${c.reset}`);
 
+  console.log(`\n${c.bold}========================================${c.reset}`);
+  console.log(`${c.cyan}GÜNCEL ÜRETİLEN SİSTEM PROMPTU (VAPI PANEL):${c.reset}`);
+  console.log(`${c.bold}========================================${c.reset}`);
+  console.log(newPanelPrompt);
+  console.log(`${c.bold}========================================${c.reset}\n`);
+
   // 3. Fetch or mock current Vapi state
   let currentAssistant: Record<string, unknown> | null = null;
   let currentTools: Map<string, { id: string; data: Record<string, unknown> }> = new Map();

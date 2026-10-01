@@ -69,7 +69,7 @@ export default function DashboardPage() {
 
   const isPhoneValid =
     !newPatientPhone.trim() ||
-    /^(\+90|0)?5\d{9}$/.test(newPatientPhone.replace(/[\s\-\(\)\.]/g, ''));
+    /^(\+90|0)?5\d{9}$/.test(newPatientPhone.replace(/[\s\-().]/g, ''));
 
   const loadData = useCallback(async () => {
     try {

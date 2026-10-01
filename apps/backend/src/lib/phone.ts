@@ -98,7 +98,7 @@ export function validateAndFormatTurkishPhone(rawPhone?: string | null): {
   }
 
   // 1. Strip spaces, dashes, dots, parentheses
-  let cleaned = rawPhone.trim().replace(/[\s\-\(\)\.]/g, '');
+  let cleaned = rawPhone.trim().replace(/[\s\-().]/g, '');
 
   // 2. Remove +90 or leading 90 if international format
   if (cleaned.startsWith('+90')) {

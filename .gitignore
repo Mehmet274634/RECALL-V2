@@ -27,7 +27,9 @@ Thumbs.db
 # Only ignore the generated client
 apps/backend/node_modules/.prisma/
 
-# Vapi Sync Backups
+# Vapi Sync Backups & Reports
 backups/
 apps/backend/backups/
+dryrun.txt
+prompt-diff.txt
 
