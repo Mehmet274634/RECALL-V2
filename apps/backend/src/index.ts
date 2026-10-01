@@ -16,6 +16,16 @@ import { analyticsRouter } from './routes/analytics.js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
+// --- VAPI Server Secret Guard (Security / ADR-006) ---
+// Terminates immediately if VAPI_SERVER_SECRET is undefined, empty, or placeholder.
+const vapiServerSecret = process.env.VAPI_SERVER_SECRET?.trim();
+if (!vapiServerSecret || vapiServerSecret === 'placeholder') {
+  console.error(
+    '[FATAL] VAPI_SERVER_SECRET is undefined or empty. Server cannot start safely.',
+  );
+  process.exit(1);
+}
+
 // --- Production Safety Guard ---
 // Must run before any route setup. Terminates immediately if security config is unsafe.
 if (process.env.NODE_ENV === 'production') {
