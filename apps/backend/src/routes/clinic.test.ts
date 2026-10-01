@@ -238,7 +238,7 @@ describe('PATCH /api/clinic/current', () => {
     expect(resJson.clinic.cancellationPolicyHours).toBe(4);
     expect(resJson.firstMessagePreview).toBeDefined();
 
-    // Snapshot creation verification (point 6)
+    // Snapshot creation verification: verify data.clinicId is strictly req.clinicId ('clinic-A')
     expect(prisma.clinicSettingVersion.create).toHaveBeenCalledWith({
       data: {
         clinicId: 'clinic-A',
@@ -250,8 +250,10 @@ describe('PATCH /api/clinic/current', () => {
         changedBy: 'user-secretary-123',
       },
     });
+    const createCallArgs = (prisma.clinicSettingVersion.create as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(createCallArgs.data.clinicId).toBe('clinic-A');
 
-    // Clinic update verification
+    // Clinic update verification: verify where.id is strictly req.clinicId ('clinic-A')
     expect(prisma.clinic.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'clinic-A' },
@@ -261,6 +263,8 @@ describe('PATCH /api/clinic/current', () => {
         }),
       }),
     );
+    const updateCallArgs = (prisma.clinic.update as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(updateCallArgs.where.id).toBe('clinic-A');
   });
 
   it('7. cancellation.ts uses the newly updated cancellationPolicyHours', async () => {
