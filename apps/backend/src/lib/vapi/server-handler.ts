@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 
 import { prisma } from '../db/client.js';
-import { getDefaultClinic, findClinicByPhoneNumber } from '../db/clinic.js';
+import { findClinicByPhoneNumber } from '../db/clinic.js';
+import type { Clinic } from '@prisma/client';
 import {
   handleCheckAvailability,
   handleBookAppointment,
@@ -84,9 +85,24 @@ export async function handleServerMessage(req: Request, res: Response): Promise<
 }
 
 /**
+ * Masks a phone number for KVKK compliance before logging (e.g. +902125550101 -> +902******01).
+ */
+export function maskPhoneNumber(phone?: string | null): string {
+  if (!phone) return '[YOK]';
+  const clean = phone.trim();
+  if (clean.length <= 4) return '***';
+  const keepStart = Math.min(4, Math.floor(clean.length / 2));
+  const keepEnd = 2;
+  const maskedLength = Math.max(3, clean.length - keepStart - keepEnd);
+  return clean.slice(0, keepStart) + '*'.repeat(maskedLength) + clean.slice(-keepEnd);
+}
+
+/**
  * Extracts inbound phone number or clinic identifier from Vapi message payload.
  */
-function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
+export function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
+  dialedNumber?: string;
+  callerNumber?: string;
   phoneNumber?: string;
   clinicId?: string;
 } {
@@ -108,20 +124,24 @@ function extractPhoneNumberOrClinic(body: Record<string, unknown>): {
   const metadata = (variableValues || call?.metadata || message?.metadata) as Record<string, unknown> | undefined;
   const clinicId = (metadata?.clinicId || metadata?.clinic_id) as string | undefined;
 
-  // 3. Fallback to customer number if needed for testing
+  // 3. Customer number (caller)
   const callerNumber = customer?.number as string | undefined;
 
   return {
+    dialedNumber,
+    callerNumber,
     phoneNumber: dialedNumber || callerNumber,
     clinicId,
   };
 }
 
 /**
- * Resolves Clinic instance from body or defaults.
+ * Resolves Clinic instance from body.
+ * If clinic cannot be resolved, returns null.
+ * FALLBACK TO DEFAULT CLINIC HAS BEEN REMOVED to prevent cross-clinic data leakage.
  */
-async function resolveClinicForRequest(body: Record<string, unknown>) {
-  const { phoneNumber, clinicId } = extractPhoneNumberOrClinic(body);
+export async function resolveClinicForRequest(body: Record<string, unknown>): Promise<Clinic | null> {
+  const { dialedNumber, callerNumber, clinicId } = extractPhoneNumberOrClinic(body);
 
   if (clinicId) {
     const clinicById = await prisma.clinic.findUnique({
@@ -130,15 +150,19 @@ async function resolveClinicForRequest(body: Record<string, unknown>) {
     if (clinicById) return clinicById;
   }
 
-  if (phoneNumber) {
-    const clinicByPhone = await findClinicByPhoneNumber(phoneNumber);
-    if (clinicByPhone) return clinicByPhone;
+  // 1. Check inbound dialed number first
+  if (dialedNumber) {
+    const clinicByDialed = await findClinicByPhoneNumber(dialedNumber);
+    if (clinicByDialed) return clinicByDialed;
   }
 
-  console.warn(
-    '[vapi] Inbound request missing phoneNumber and clinicId metadata — falling back to default clinic',
-  );
-  return getDefaultClinic();
+  // 2. Check caller number as secondary fallback
+  if (callerNumber) {
+    const clinicByCaller = await findClinicByPhoneNumber(callerNumber);
+    if (clinicByCaller) return clinicByCaller;
+  }
+
+  return null;
 }
 
 /**
@@ -146,7 +170,18 @@ async function resolveClinicForRequest(body: Record<string, unknown>) {
  */
 async function handleAssistantRequest(body: Record<string, unknown>, res: Response): Promise<void> {
   try {
+    const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body);
     const clinic = await resolveClinicForRequest(body);
+    if (!clinic) {
+      const maskedDialed = maskPhoneNumber(dialedNumber);
+      const maskedCaller = maskPhoneNumber(callerNumber);
+      console.warn(
+        `[vapi] Clinic resolution failed for assistant-request (dialed: ${maskedDialed}, caller: ${maskedCaller})`,
+      );
+      res.status(200).json({});
+      return;
+    }
+
     const { prompt, voiceId, clinicName } = await buildSystemPromptDetails(clinic.id);
 
     console.log(
@@ -199,7 +234,26 @@ async function handleToolCalls(body: Record<string, unknown>, res: Response): Pr
     return;
   }
 
+  const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body);
   const clinic = await resolveClinicForRequest(body);
+
+  if (!clinic) {
+    const maskedDialed = maskPhoneNumber(dialedNumber);
+    const maskedCaller = maskPhoneNumber(customerNumber || callerNumber);
+    console.warn(
+      `[vapi] Clinic resolution failed for tool-calls (callId: ${callId || 'unknown'}, dialed: ${maskedDialed}, caller: ${maskedCaller})`,
+    );
+
+    const errorMessage =
+      'Şu an işleminizi tamamlayamıyorum, lütfen kliniği doğrudan arayarak sekreterliğe ulaşınız.';
+    const results = toolCallList.map((toolCall) => ({
+      toolCallId: toolCall.id as string,
+      result: errorMessage,
+    }));
+    res.status(200).json({ results });
+    return;
+  }
+
   const clinicId = clinic.id;
 
   const results = await Promise.all(
@@ -553,7 +607,16 @@ async function handleEndOfCallReport(body: Record<string, unknown>): Promise<voi
       );
     }
 
+    const { dialedNumber, callerNumber } = extractPhoneNumberOrClinic(body);
     const clinic = await resolveClinicForRequest(body);
+    if (!clinic) {
+      const maskedDialed = maskPhoneNumber(dialedNumber);
+      const maskedCaller = maskPhoneNumber(callerNumber);
+      console.warn(
+        `[vapi] Clinic resolution failed for end-of-call-report (callId: ${vapiCallId}, dialed: ${maskedDialed}, caller: ${maskedCaller})`,
+      );
+      return;
+    }
 
     const callLog = await prisma.callLog.upsert({
       where: { vapiCallId },
