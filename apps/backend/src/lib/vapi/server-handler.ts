@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 
 import { prisma } from '../db/client.js';
-import { findClinicByPhoneNumber } from '../db/clinic.js';
+import { findClinicByPhoneNumber, findClinicByInboundNumber, normalizeToE164, legacyClinicSelect } from '../db/clinic.js';
+import { normalizePhone } from '../phone.js';
 import type { Clinic } from '@prisma/client';
 import {
   handleCheckAvailability,
@@ -106,7 +107,7 @@ export function maskPhoneNumber(phone?: string | null): string {
     }
   }
   if (clean.length <= 4) return '***';
-  const keepStart = Math.min(4, Math.floor(clean.length / 2));
+  const keepStart = clean.startsWith('+90') ? 5 : Math.min(4, Math.floor(clean.length / 2));
   const keepEnd = 2;
   const maskedLength = Math.max(3, clean.length - keepStart - keepEnd);
   return clean.slice(0, keepStart) + '*'.repeat(maskedLength) + clean.slice(-keepEnd);
@@ -160,12 +161,80 @@ export function extractPhoneNumberOrClinic(
   };
 }
 
+export interface CallerInfo {
+  rawCallerNumber: string | null;
+  normalizedCallerNumber: string | null;
+  maskedCallerNumber: string;
+  patientId: string | null;
+  patient: { id: string; fullName: string; phoneNumber: string } | null;
+}
+
+/**
+ * Extracts, normalizes and logs caller ID (customer.number) with KVKK-safe masking.
+ * Optionally attempts to look up an existing Patient record in the given clinic.
+ * Does NOT alter tool flow, ready for future caller ID identification.
+ */
+export async function resolveCallerInfo(
+  body: Record<string, unknown>,
+  clinicId?: string,
+): Promise<CallerInfo> {
+  const message = body?.message as Record<string, unknown> | undefined;
+  const call = (message?.call || body?.call) as Record<string, unknown> | undefined;
+  const customer = (message?.customer || call?.customer) as Record<string, unknown> | undefined;
+
+  const raw = (customer?.number as string | undefined)?.trim() || null;
+  if (!raw) {
+    return {
+      rawCallerNumber: null,
+      normalizedCallerNumber: null,
+      maskedCallerNumber: '[YOK]',
+      patientId: null,
+      patient: null,
+    };
+  }
+
+  const normalized = normalizeToE164(raw) || normalizePhone(raw);
+  const masked = maskPhoneNumber(normalized || raw);
+
+  console.log(`[vapi:caller] Inbound caller identified: ${masked} (clinicId: ${clinicId || 'unresolved'})`);
+
+  let patient: { id: string; fullName: string; phoneNumber: string } | null = null;
+  if (clinicId && normalized) {
+    try {
+      patient = await prisma.patient.findFirst({
+        where: {
+          clinicId,
+          phoneNumber: normalized,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          phoneNumber: true,
+        },
+      });
+      if (patient) {
+        console.log(`[vapi:caller] Matching patient found for caller ${masked}: ${patient.id}`);
+      }
+    } catch (err) {
+      console.error('[vapi:caller] Error matching patient for caller:', err);
+    }
+  }
+
+  return {
+    rawCallerNumber: raw,
+    normalizedCallerNumber: normalized,
+    maskedCallerNumber: masked,
+    patientId: patient?.id || null,
+    patient,
+  };
+}
+
 /**
  * Resolves Clinic instance from body or query.
- * Clinic is resolved via:
+ * Priority order:
  * 1. clinicId (metadata/variableValues or query.clinicId)
- * 2. Inbound dialed number (to), ONLY if not a SIP URI.
- * SIP addresses (sip:...) skip phone number lookup and are NOT passed to normalizeToE164.
+ * 2. Inbound dialed number (to) -> ai_inbound_number (including SIP username match)
+ * 3. Inbound dialed number (to) -> phone_number (legacy backup)
  * Caller number (customer.number) is NEVER used to resolve clinic identity.
  * If clinic cannot be resolved, returns null (no fallback to default clinic).
  */
@@ -175,23 +244,31 @@ export async function resolveClinicForRequest(
 ): Promise<Clinic | null> {
   const { dialedNumber, clinicId } = extractPhoneNumberOrClinic(body, query);
 
+  // 1. clinicId (variableValues/metadata or query parameter) has absolute top priority
   if (clinicId) {
-    const clinicById = await prisma.clinic.findUnique({
-      where: { id: clinicId },
-    });
-    if (clinicById) return clinicById;
+    try {
+      const clinicById = await prisma.clinic.findUnique({
+        where: { id: clinicId },
+      });
+      if (clinicById) return clinicById;
+    } catch (error: any) {
+      if (error?.code === 'P2022') {
+        const clinicById = await prisma.clinic.findUnique({
+          where: { id: clinicId },
+          select: legacyClinicSelect,
+        });
+        if (clinicById) return clinicById as Clinic;
+      } else {
+        throw error;
+      }
+    }
   }
 
-  // Check inbound dialed number (only if not a SIP URI)
+  // 2. Inbound dialed number (to) -> priority: ai_inbound_number > phone_number
+  // SIP URIs check aiInboundNumber (SIP username or full URI) and skip phone/E.164 lookup
   if (dialedNumber) {
-    const trimmed = dialedNumber.trim();
-    if (trimmed.toLowerCase().startsWith('sip:')) {
-      // SIP addresses are network URIs, not E.164 phone numbers; skip phone number lookup & do NOT pass to normalizeToE164
-      return null;
-    }
-
-    const clinicByDialed = await findClinicByPhoneNumber(trimmed);
-    if (clinicByDialed) return clinicByDialed;
+    const clinicByInbound = await findClinicByInboundNumber(dialedNumber);
+    if (clinicByInbound) return clinicByInbound;
   }
 
   return null;

@@ -1,5 +1,4 @@
 import { prisma } from '../db/client.js';
-import { getDefaultClinic } from '../db/clinic.js';
 
 import type { Appointment } from '@prisma/client';
 
@@ -9,7 +8,7 @@ import { parseIstanbulDate, formatIstanbulTime, formatIstanbulDate } from '../da
 import { checkAvailability, getDoctorSlotDuration } from './availability.js';
 
 export interface BookAppointmentParams {
-  clinicId?: string;
+  clinicId: string;
   patientName: string;
   patientPhone: string;
   doctorName?: string;
@@ -29,9 +28,13 @@ export interface BookingResult {
 
 /**
  * Books an appointment in a database transaction with overlap conflict prevention.
+ * clinicId is strictly required. Throws if missing.
  */
 export async function bookAppointment(params: BookAppointmentParams): Promise<BookingResult> {
-  const clinicId = params.clinicId || (await getDefaultClinic()).id;
+  const clinicId = params.clinicId?.trim();
+  if (!clinicId) {
+    throw new Error('clinicId is required for bookAppointment');
+  }
 
   if (!params.patientName?.trim()) {
     return { success: false, message: 'Randevu oluşturmak için hasta adı gereklidir.' };
@@ -54,6 +57,9 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
     doctor = await prisma.doctor.findFirst({
       where: { id: params.doctorId, clinicId },
     });
+    if (!doctor) {
+      return { success: false, message: 'Belirtilen doktor bu kliniğe ait değil veya bulunamadı.' };
+    }
   }
 
   if (!doctor && params.doctorName) {
@@ -63,6 +69,9 @@ export async function bookAppointment(params: BookAppointmentParams): Promise<Bo
         name: { contains: params.doctorName, mode: 'insensitive' },
       },
     });
+    if (!doctor && !params.specialty) {
+      return { success: false, message: `Kliniğimizde "${params.doctorName}" isimli hekim bulunamadı.` };
+    }
   }
 
   if (!doctor && params.specialty) {

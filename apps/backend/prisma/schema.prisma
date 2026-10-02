@@ -15,7 +15,12 @@ datasource db {
 model Clinic {
   id                      String        @id @default(cuid())
   name                    String
+  // Kliniğin kurumsal iletişim / santral numarası (Legacy ve yedek arama için korunur)
   phoneNumber             String        @unique @map("phone_number")
+  // AI hattına tahsis edilen gelen çağrı numarası (E.164 veya SIP kullanıcı adı)
+  aiInboundNumber         String?       @unique @map("ai_inbound_number")
+  // Sekretere aktarma için kullanılacak yönlendirilmemiş doğrudan santral/sekreter hattı
+  transferNumber          String?       @map("transfer_number")
   timezone                String        @default("Europe/Istanbul")
   greetingMessage         String?       @map("greeting_message")
   specialInstructions     String?       @db.Text @map("special_instructions")

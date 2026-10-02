@@ -1,17 +1,16 @@
 import { prisma } from '../db/client.js';
-import { getDefaultClinic } from '../db/clinic.js';
 import { normalizePhone, isValidPhone, isTurkishNameMatch } from '../phone.js';
 import { parseIstanbulDate, formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 
 export interface CancelAppointmentParams {
-  clinicId?: string;
+  clinicId: string;
   appointmentId?: string;
   patientPhone?: string;
   patientName?: string;
 }
 
 export interface RescheduleAppointmentParams {
-  clinicId?: string;
+  clinicId: string;
   appointmentId?: string;
   patientPhone?: string;
   patientName?: string;
@@ -28,13 +27,24 @@ export interface ModificationResult {
 /**
  * Cancels an existing scheduled appointment strictly by appointmentId or verified patient phone + patientName.
  * Checks clinic cancellationPolicyHours: rejects if startsAt - now < policyHours.
+ * clinicId is strictly required. Throws if missing.
  */
 export async function cancelAppointment(params: CancelAppointmentParams): Promise<ModificationResult> {
-  const clinic = params.clinicId
-    ? await prisma.clinic.findUnique({ where: { id: params.clinicId } })
-    : await getDefaultClinic();
-  const resolvedClinicId = clinic?.id || (await getDefaultClinic()).id;
-  const policyHours = clinic?.cancellationPolicyHours ?? 2;
+  const clinicId = params.clinicId?.trim();
+  if (!clinicId) {
+    throw new Error('clinicId is required for cancelAppointment');
+  }
+
+  const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
+  if (!clinic) {
+    return {
+      success: false,
+      message: 'Klinik kaydı bulunamadı.',
+    };
+  }
+
+  const resolvedClinicId = clinic.id;
+  const policyHours = clinic.cancellationPolicyHours ?? 2;
 
   if (!params.patientName || !params.patientName.trim()) {
     return {
@@ -124,13 +134,24 @@ export async function cancelAppointment(params: CancelAppointmentParams): Promis
 /**
  * Reschedules an existing scheduled appointment to a new date and time.
  * Enforces cancellationPolicyHours on the OLD appointment.
+ * clinicId is strictly required. Throws if missing.
  */
 export async function rescheduleAppointment(params: RescheduleAppointmentParams): Promise<ModificationResult> {
-  const clinic = params.clinicId
-    ? await prisma.clinic.findUnique({ where: { id: params.clinicId } })
-    : await getDefaultClinic();
-  const resolvedClinicId = clinic?.id || (await getDefaultClinic()).id;
-  const policyHours = clinic?.cancellationPolicyHours ?? 2;
+  const clinicId = params.clinicId?.trim();
+  if (!clinicId) {
+    throw new Error('clinicId is required for rescheduleAppointment');
+  }
+
+  const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
+  if (!clinic) {
+    return {
+      success: false,
+      message: 'Klinik kaydı bulunamadı.',
+    };
+  }
+
+  const resolvedClinicId = clinic.id;
+  const policyHours = clinic.cancellationPolicyHours ?? 2;
 
   if (!params.patientName || !params.patientName.trim()) {
     return {
@@ -226,6 +247,18 @@ export async function rescheduleAppointment(params: RescheduleAppointmentParams)
       success: false,
       message: 'Randevunuz geçmiş bir tarihe veya saate alınamaz.',
     };
+  }
+
+  if (params.newDoctorId) {
+    const doctorInClinic = await prisma.doctor.findFirst({
+      where: { id: params.newDoctorId, clinicId: resolvedClinicId },
+    });
+    if (!doctorInClinic) {
+      return {
+        success: false,
+        message: 'Belirtilen yeni hekim bu kliniğe ait değil veya bulunamadı.',
+      };
+    }
   }
 
   const targetDoctorId = params.newDoctorId || appointment.doctorId;

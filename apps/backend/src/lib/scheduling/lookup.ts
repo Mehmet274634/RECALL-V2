@@ -1,10 +1,9 @@
 import { prisma } from '../db/client.js';
-import { getDefaultClinic } from '../db/clinic.js';
 import { normalizePhone, isValidPhone, isTurkishNameMatch } from '../phone.js';
 import { formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 
 export interface LookupAppointmentParams {
-  clinicId?: string;
+  clinicId: string;
   patientPhone?: string;
   patientName?: string;
 }
@@ -25,9 +24,13 @@ export interface LookupResult {
 
 /**
  * Look up existing appointments for a patient strictly by verified phone number and matching patientName.
+ * clinicId is strictly required. Throws if missing.
  */
 export async function lookupAppointment(params: LookupAppointmentParams): Promise<LookupResult> {
-  const clinicId = params.clinicId || (await getDefaultClinic()).id;
+  const clinicId = params.clinicId?.trim();
+  if (!clinicId) {
+    throw new Error('clinicId is required for lookupAppointment');
+  }
 
   if (!params.patientName || !params.patientName.trim()) {
     return {

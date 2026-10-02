@@ -1,9 +1,8 @@
 import { prisma } from '../db/client.js';
-import { getDefaultClinic } from '../db/clinic.js';
 import { getIstanbulDayRange, parseIstanbulDate, formatIstanbulDateStr } from '../date-utils.js';
 
 export interface CheckAvailabilityParams {
-  clinicId?: string;
+  clinicId: string;
   doctorName?: string;
   doctorId?: string;
   specialty?: string;
@@ -83,11 +82,15 @@ export function getDoctorSlotDuration(doctor?: { workingHours?: unknown } | null
 
 /**
  * Checks doctor/clinic slot availability for a given date.
+ * clinicId is strictly required. Throws if missing.
  */
 export async function checkAvailability(
   params: CheckAvailabilityParams,
 ): Promise<AvailableSlotResult> {
-  const clinicId = params.clinicId || (await getDefaultClinic()).id;
+  const clinicId = params.clinicId?.trim();
+  if (!clinicId) {
+    throw new Error('clinicId is required for checkAvailability');
+  }
 
   // 1. Resolve Target Date (default to tomorrow if not specified or invalid)
   let targetDate: Date;
@@ -117,6 +120,14 @@ export async function checkAvailability(
     doctor = await prisma.doctor.findFirst({
       where: { id: params.doctorId, clinicId },
     });
+    if (!doctor) {
+      return {
+        success: false,
+        date: dateStr,
+        availableSlots: [],
+        message: 'Belirtilen hekim bu kliniğe ait değil veya bulunamadı.',
+      };
+    }
   }
 
   if (!doctor && params.doctorName) {
@@ -126,6 +137,14 @@ export async function checkAvailability(
         name: { contains: params.doctorName, mode: 'insensitive' },
       },
     });
+    if (!doctor && !params.specialty) {
+      return {
+        success: false,
+        date: dateStr,
+        availableSlots: [],
+        message: `Kliniğimizde "${params.doctorName}" isimli hekim bulunamadı.`,
+      };
+    }
   }
 
   if (!doctor && params.specialty) {

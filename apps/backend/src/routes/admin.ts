@@ -73,6 +73,8 @@ const doctorSchema = z.object({
 const createClinicSchema = z.object({
   name: z.string().min(2, 'Klinik adı en az 2 karakter olmalıdır.'),
   phoneNumber: z.string().optional(),
+  aiInboundNumber: z.string().optional(),
+  transferNumber: z.string().optional(),
   greetingMessage: z.string().optional(),
   cancellationPolicyHours: z.number().int().min(0).default(2),
   specialInstructions: z.string().optional(),
@@ -94,6 +96,8 @@ adminRouter.post('/clinics', async (req: AuthenticatedRequest, res) => {
   const {
     name,
     phoneNumber: rawPhone,
+    aiInboundNumber: rawAiInboundNumber,
+    transferNumber: rawTransferNumber,
     greetingMessage,
     cancellationPolicyHours,
     specialInstructions,
@@ -107,12 +111,18 @@ adminRouter.post('/clinics', async (req: AuthenticatedRequest, res) => {
       phoneNumber = await generatePlaceholderPhoneNumber();
     }
 
+    const { normalizeAiInboundNumber } = await import('../lib/db/clinic.js');
+    const aiInboundNumber = normalizeAiInboundNumber(rawAiInboundNumber);
+    const transferNumber = rawTransferNumber?.trim() || null;
+
     const defaultGreeting = `Merhaba, ${name}'na hoş geldiniz. Ben yapay zeka asistanınız, randevunuz için nasıl yardımcı olabilirim?`;
 
     const clinic = await prisma.clinic.create({
       data: {
         name: name.trim(),
         phoneNumber,
+        aiInboundNumber,
+        transferNumber,
         timezone: 'Europe/Istanbul',
         greetingMessage: greetingMessage?.trim() || defaultGreeting,
         cancellationPolicyHours,

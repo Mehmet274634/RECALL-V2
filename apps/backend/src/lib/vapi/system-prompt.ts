@@ -1,5 +1,4 @@
 import { prisma } from '../db/client.js';
-import { getDefaultClinic } from '../db/clinic.js';
 import { formatIstanbulTime, formatIstanbulDate } from '../date-utils.js';
 import {
   sanitizeSpecialInstructions,
@@ -28,7 +27,7 @@ export interface BuildSystemPromptOptions {
  * - Cancellation policy hours
  * - Optional custom clinic special instructions
  */
-export async function buildSystemPrompt(clinicId?: string): Promise<string> {
+export async function buildSystemPrompt(clinicId: string): Promise<string> {
   const result = await buildSystemPromptDetails(clinicId);
   return result.prompt;
 }
@@ -40,53 +39,62 @@ export async function buildSystemPrompt(clinicId?: string): Promise<string> {
  * - Excludes greeting block (greeting is placed in Vapi's First Message)
  * - Has no template placeholders or "ÖNEMLİ NOT"
  */
-export async function buildPanelSystemPrompt(clinicId?: string): Promise<string> {
+export async function buildPanelSystemPrompt(clinicId: string): Promise<string> {
   const result = await buildSystemPromptDetails(clinicId, { forVapiPanel: true });
   return result.prompt;
 }
 
 /**
  * Builds prompt along with clinic metadata (such as voiceId).
+ * clinicId is strictly required. Throws if missing or clinic not found.
  */
 export async function buildSystemPromptDetails(
-  clinicId?: string,
+  clinicId: string,
   options?: BuildSystemPromptOptions,
 ): Promise<BuiltSystemPrompt> {
+  const trimmedClinicId = clinicId?.trim();
+  if (!trimmedClinicId) {
+    throw new Error('clinicId is required for buildSystemPromptDetails');
+  }
 
-  let clinic = null;
-
-  if (clinicId) {
+  let clinic: any;
+  try {
     clinic = await prisma.clinic.findUnique({
-      where: { id: clinicId },
+      where: { id: trimmedClinicId },
       include: {
         doctors: {
           orderBy: { name: 'asc' },
         },
       },
     });
-  }
-
-  // Fallback to default clinic if not found
-  if (!clinic) {
-    const defaultClinic = await getDefaultClinic();
-    clinic = await prisma.clinic.findUnique({
-      where: { id: defaultClinic.id },
-      include: {
-        doctors: {
-          orderBy: { name: 'asc' },
+  } catch (error: any) {
+    if (error?.code === 'P2022') {
+      clinic = await prisma.clinic.findUnique({
+        where: { id: trimmedClinicId },
+        select: {
+          id: true,
+          name: true,
+          phoneNumber: true,
+          timezone: true,
+          greetingMessage: true,
+          specialInstructions: true,
+          cancellationPolicyHours: true,
+          voiceId: true,
+          settingsUpdatedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          doctors: {
+            orderBy: { name: 'asc' },
+          },
         },
-      },
-    });
+      });
+    } else {
+      throw error;
+    }
   }
 
   if (!clinic) {
-    console.error(`[system-prompt] Clinic not found for ID: ${clinicId}`);
-    return {
-      prompt: getFallbackSystemPrompt(),
-      voiceId: null,
-      clinicId: clinicId || 'unknown',
-      clinicName: 'Sağlık Kliniği',
-    };
+    throw new Error(`Clinic not found for ID: ${trimmedClinicId}`);
   }
 
   const clinicName = clinic.name || 'Sağlık Kliniği';

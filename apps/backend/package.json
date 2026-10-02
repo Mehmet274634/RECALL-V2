@@ -10,7 +10,7 @@
     "lint": "eslint src/ --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false",
     "test:watch": "vitest",
     "test:security": "tsx scripts/test-security-isolation.ts && tsx scripts/test-http-security.ts",
     "test:all": "tsx scripts/test-security-isolation.ts && tsx scripts/test-http-security.ts && tsx scripts/test-timezone-reschedule.ts",
